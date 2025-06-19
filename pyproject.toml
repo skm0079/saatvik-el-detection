@@ -1,0 +1,31 @@
+[project]
+name = "saatvik-el-detection"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "asyncpg>=0.30.0",
+    "fastapi>=0.115.13",
+    "jinja2>=3.1.6",
+    "loguru>=0.7.3",
+    "numpy>=2.2.6",
+    "opencv-python>=4.11.0.86",
+    "pillow>=11.2.1",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.9.1",
+    "python-multipart>=0.0.20",
+    "sqlmodel>=0.0.24",
+    "ultralytics>=8.3.156",
+    "uvicorn>=0.34.3",
+    "watchdog>=6.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=1.16.1",
+    "pytest>=8.4.1",
+    "ruff>=0.12.0",
+]

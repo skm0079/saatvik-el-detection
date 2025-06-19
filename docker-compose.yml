@@ -1,0 +1,51 @@
+services:
+  fastapi-app:
+    build: .
+    container_name: saatvik-el-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/saatvik_el_db
+      EL_FOLDER_PATH: "el/2025/01/shift1"
+      CONFIDENCE_THRESHOLD: 0.2
+    volumes:
+      # Application data
+      - ./source:/app/source:rw
+      - ./processed:/app/processed:rw
+      - ./backup:/app/backup:rw
+      - ./logs:/app/logs:rw
+      # Mount SMB share (mounted on host)
+      - /mnt/shared:/mnt/shared:ro
+      # Application code
+      - ./app:/app/app:ro
+      - ./models:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15.0-alpine
+    container_name: saatvik-el-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saatvik_el_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
