@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import Optional
 
 class Settings(BaseSettings):
     # Database
@@ -16,7 +15,7 @@ class Settings(BaseSettings):
     
     # YOLO Model
     model_path: Path = Path("models/best_6.pt")
-    confidence_threshold: float = 0.5
+    confidence_threshold: float = 0.3
     
     # API
     api_v1_str: str = "/api/v1"
