@@ -1,4 +1,9 @@
+# File: Dockerfile
+
 FROM python:3.10-slim-bookworm
+
+# Build arguments
+ARG ENV=dev
 
 # Install system dependencies including OpenCV requirements
 RUN apt-get update && apt-get install -y \
@@ -50,10 +55,18 @@ RUN mkdir -p source processed backup logs app/static && \
 # Set environment variables for headless operation
 ENV DISPLAY=:99
 ENV QT_QPA_PLATFORM=offscreen
+ENV PYTHONPATH=/app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Start application (runs as root, but simpler)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Simple approach: Always run as root, use environment variable for reload
+ENV BUILD_ENV=$ENV
+
+# Start application - all environments run as root
+CMD if [ "$BUILD_ENV" = "dev" ]; then \
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload; \
+    else \
+        uvicorn app.main:app --host 0.0.0.0 --port 8000; \
+    fi

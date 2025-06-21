@@ -1,0 +1,62 @@
+# File: docker-compose.prod.yml
+
+services:
+  fastapi-app-prod:
+    build:
+      context: .
+      args:
+        ENV: prod
+        DEBUG: false
+    container_name: saatvik-el-api-prod
+    restart: unless-stopped
+    ports:
+      - "8002:8000"  # Different port for production
+    env_file:
+      - .env.prod
+    volumes:
+      # Application data - SEPARATE folders for production
+      - ./production/source:/app/source:rw
+      - ./production/processed:/app/processed:rw
+      - ./production/backup:/app/backup:rw
+      - ./production/logs:/app/logs:rw
+      - ./watchdog:/app/watchdog:rw
+      # Mount SMB share (mounted on host)
+      - /mnt/shared:/mnt/shared:ro
+      # Application code (read-only for production)
+      - ./app:/app/app:ro
+      - ./models:/app/models:ro
+    depends_on:
+      postgres-prod:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+
+  postgres-prod:
+    image: postgres:15.0-alpine
+    container_name: saatvik-el-db-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saatvik_el_db_prod
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"  # Different port for production DB
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data_prod:

@@ -48,9 +48,9 @@ class ImageViewerService:
         
     # TODO: Revert 10.10.2.1    
     def _get_client_info(self) -> dict:
-        """Get client information"""
+        """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1  """ ,
         return {
-            'client_ip': '10.10.2.126',
+            'client_ip': '10.10.2.1 ',
             'client_os': 'windows',
             'client_type': 'windows'
         }
@@ -59,8 +59,9 @@ class ImageViewerService:
         """Simple copy to shared folder and trigger client"""
         try:
             # TODO: Revert : shared2 -> shared
+            # Possible VAlues -> /mnt/shared2/2025-06-20/Morning Shift/processed or /mnt/shared
             # Create shared processed folder
-            shared_dir = Path("/mnt/shared2/2025-06-20/Morning Shift/processed")
+            shared_dir = Path("/mnt/shared")
             shared_dir.mkdir(parents=True, exist_ok=True)
             
             # Simple copy - NO modification
@@ -72,8 +73,8 @@ class ImageViewerService:
             # Get client info
             client_info = self._get_client_info()
             client_os = client_info.get('client_os', 'windows').lower()
-            # TODO: Revert 10.10.2.1    
-            client_ip = client_info.get('client_ip', '10.10.2.126')
+            # TODO: Revert 10.10.2.1 or 10.10.2.126
+            client_ip = client_info.get('client_ip', '10.10.2.1')
             
             # Create network path
             if client_os == "windows":
@@ -84,102 +85,15 @@ class ImageViewerService:
             logger.info(f"🎯 Targeting {client_os} client at {client_ip}")
             logger.info(f"🪟 Network path: {network_path}")
             
-            # Trigger client
-            self._trigger_client(client_ip, client_os, network_path)
+            # Post Result Ready & Dropped to Client State
+            logger.info(f"🪟 Result Ready :: Source Path : {image_path} || Destination Path: {shared_image_path}")
+            
             
             logger.success(f"✅ Triggered {client_os} client: {image_path.name}")
             
         except Exception as e:
             logger.error(f"Failed to copy and trigger: {e}")
     
-    def _trigger_client(self, client_ip: str, client_os: str, image_path: str):
-        """Trigger client to open image"""
-        try:
-            if client_os == "windows":
-                self._trigger_windows_client(client_ip, image_path)
-            else:
-                self._trigger_linux_client(client_ip, image_path)
-                
-        except Exception as e:
-            logger.error(f"Client trigger failed: {e}")
-    
-    def _trigger_windows_client(self, client_ip: str, image_path: str):
-        """Trigger Windows client"""
-        try:
-            logger.info(f"🪟 Triggering Windows client: {image_path}")
-            
-            # Method 1: HTTP API call
-            try:
-                import requests
-                response = requests.post(
-                    f"http://{client_ip}:9999/open-image",
-                    json={"image_path": image_path, "action": "open"},
-                    timeout=3
-                )
-                
-                if response.status_code == 200:
-                    logger.success(f"✅ Windows client triggered via HTTP")
-                    return
-            except Exception:
-                logger.debug("HTTP trigger failed, trying other methods")
-            #TODO: Revert
-            # Method 2: Create trigger file
-            try:
-                trigger_file = Path("/mnt/shared2/2025-06-20/Morning Shift/open_image.txt")
-                with open(trigger_file, 'w') as f:
-                    f.write(image_path)
-                
-                logger.info(f"📄 Created trigger file: {trigger_file}")
-                
-            except Exception as e:
-                logger.warning(f"Trigger file failed: {e}")
-            
-            # Method 3: Log for manual access
-            logger.info(f"📁 Image available for Windows client: {image_path}")
-            
-        except Exception as e:
-            logger.error(f"Windows trigger failed: {e}")
-    
-    def _trigger_linux_client(self, client_ip: str, image_path: str):
-        """Trigger Linux client"""
-        try:
-            logger.info(f"🐧 Triggering Linux client: {image_path}")
-            
-            # Method 1: HTTP API call
-            try:
-                import requests
-                response = requests.post(
-                    f"http://{client_ip}:9999/open-image",
-                    json={"image_path": image_path, "action": "open"},
-                    timeout=3
-                )
-                
-                if response.status_code == 200:
-                    logger.success(f"✅ Linux client triggered via HTTP")
-                    return
-            except Exception:
-                logger.debug("HTTP trigger failed, trying SSH")
-            
-            # Method 2: SSH command
-            try:
-                import subprocess
-                ssh_cmd = [
-                    'ssh', f'administrator@{client_ip}', 
-                    f'DISPLAY=:0 eog "{image_path}" > /dev/null 2>&1 &'
-                ]
-                result = subprocess.run(ssh_cmd, timeout=5, capture_output=True)
-                
-                if result.returncode == 0:
-                    logger.success(f"✅ Linux client triggered via SSH")
-                    return
-            except Exception as e:
-                logger.warning(f"SSH trigger failed: {e}")
-            
-            # Method 3: Log for manual access
-            logger.info(f"📁 Image available for Linux client: {image_path}")
-            
-        except Exception as e:
-            logger.error(f"Linux trigger failed: {e}")
     
     async def process_images(self):
         """Process new images from queue"""
