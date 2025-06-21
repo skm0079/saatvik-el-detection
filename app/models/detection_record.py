@@ -1,3 +1,5 @@
+# File: app/models/detection_record.py
+
 from sqlmodel import SQLModel, Field, Column, JSON
 from uuid import UUID, uuid4
 from datetime import datetime

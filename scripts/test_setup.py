@@ -1,3 +1,5 @@
+# File: scripts/test_setup.py 
+
 #!/usr/bin/env python3
 """
 Complete setup testing script for Saatvik EL Detection system

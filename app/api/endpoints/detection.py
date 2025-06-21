@@ -1,3 +1,5 @@
+# File: app/api/endpoints/detection.py
+
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, BackgroundTasks
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.services.yolo_service import YOLOService, get_yolo_service

@@ -1,3 +1,5 @@
+# File: app/api/endpoints/health.py
+
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.database import get_session

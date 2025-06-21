@@ -1,3 +1,5 @@
+# File: app/core/logging.py
+
 from loguru import logger
 import sys
 from app.core.config import settings
