@@ -21,10 +21,12 @@ from watchdog.events import FileSystemEventHandler
 from queue import Queue
 
 class ELImageWatcher(FileSystemEventHandler):
-    def __init__(self, file_queue: Queue):
+    def __init__(self, file_queue: Queue, watch_path: Path, excluded_folders: Set[str]):
         self.file_queue = file_queue
         self.processed_files: Set[str] = set()
         self._load_processed_files()
+        self.watch_path = watch_path
+        self.excluded_folders = excluded_folders
     
     def _load_processed_files(self):
         """Load previously processed files"""
@@ -64,6 +66,14 @@ class ELImageWatcher(FileSystemEventHandler):
         
         file_path = Path(event.src_path)
         
+        # Check if file is in excluded level 1 folder
+        try:
+            relative_path = file_path.relative_to(self.watch_path)
+            if len(relative_path.parts) > 0 and relative_path.parts[0] in self.excluded_folders:
+                return  # Skip this file
+        except ValueError:
+            pass  # File not under watch path
+        
         # Only process image files
         if file_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
             logger.info(f"🔍 NEW FILE DETECTED: {file_path.name}")
@@ -76,13 +86,22 @@ class ELImageWatcher(FileSystemEventHandler):
             
             # Add to queue for async processing
             self.file_queue.put((str(file_path), file_hash))
-    
+
     def on_moved(self, event):
         """Handle file moves"""
         if event.is_directory:
             return
         
         dest_path = Path(event.dest_path)
+        
+        # Check if file is in excluded level 1 folder
+        try:
+            relative_path = dest_path.relative_to(self.watch_path)
+            if len(relative_path.parts) > 0 and relative_path.parts[0] in self.excluded_folders:
+                return  # Skip this file
+        except ValueError:
+            pass  # File not under watch path
+        
         if dest_path.suffix.lower() in ['.jpg', '.jpeg', '.png']:
             logger.info(f"🔍 FILE MOVED: {dest_path.name}")
             
@@ -94,12 +113,14 @@ class ELImageWatcher(FileSystemEventHandler):
             self.file_queue.put((str(dest_path), file_hash))
 
 class ELWatchdogService:
-    def __init__(self, watch_path: str, api_endpoint: str):
+    def __init__(self, watch_path: str, api_endpoint: str, excluded_folders: Set[str] = None):
         self.watch_path = Path(watch_path)
         self.api_endpoint = api_endpoint
         self.file_queue = Queue()
         self.observer = PollingObserver(timeout=3)  # Poll every 3 seconds
         self.processing = set()
+        self.excluded_folders = excluded_folders or set()
+        
         
     async def process_files(self):
         """Async file processor - runs in main thread"""
@@ -218,7 +239,7 @@ class ELWatchdogService:
             return
         
         # Create event handler
-        event_handler = ELImageWatcher(self.file_queue)
+        event_handler = ELImageWatcher(self.file_queue, self.watch_path, self.excluded_folders)
         
         # Start observer
         self.observer.schedule(event_handler, str(self.watch_path), recursive=True)
@@ -265,8 +286,11 @@ async def main():
     """Main entry point"""
     
     # Configuration
-    WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
+    # WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
+    WATCH_PATH = "/mnt/shared2/2025-06-20/Morning Shift"  # Your SMB mount path
+
     API_ENDPOINT = "http://localhost:8000/api/v1/detect"  # Local FastAPI
+    EXCLUDED_FOLDERS = {"NG", "OK","processed"}  # Level 1 folders to ignore
     
     logger.info("🚀 Saatvik EL Image Watcher Starting...")
     logger.info(f"📁 Watch Path: {WATCH_PATH}")
@@ -294,7 +318,7 @@ async def main():
     
     # Start watcher
     try:
-        watcher = ELWatchdogService(WATCH_PATH, API_ENDPOINT)
+        watcher = ELWatchdogService(WATCH_PATH, API_ENDPOINT, EXCLUDED_FOLDERS)
         await watcher.start_watching()
     except KeyboardInterrupt:
         logger.info("🛑 Interrupted by user")

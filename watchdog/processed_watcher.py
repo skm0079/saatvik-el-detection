@@ -10,7 +10,6 @@ Processed Folder Watcher + Windows Client Trigger
 
 import asyncio
 import platform
-import os 
 import shutil
 from pathlib import Path
 from loguru import logger
@@ -47,10 +46,11 @@ class ImageViewerService:
         self.image_queue = Queue()
         self.observer = PollingObserver(timeout=3)
         
+    # TODO: Revert 10.10.2.1    
     def _get_client_info(self) -> dict:
         """Get client information"""
         return {
-            'client_ip': '10.10.2.1',
+            'client_ip': '10.10.2.126',
             'client_os': 'windows',
             'client_type': 'windows'
         }
@@ -58,8 +58,9 @@ class ImageViewerService:
     def _copy_to_shared_and_trigger(self, image_path: Path):
         """Simple copy to shared folder and trigger client"""
         try:
+            # TODO: Revert : shared2 -> shared
             # Create shared processed folder
-            shared_dir = Path("/mnt/shared/processed")
+            shared_dir = Path("/mnt/shared2/2025-06-20/Morning Shift/processed")
             shared_dir.mkdir(parents=True, exist_ok=True)
             
             # Simple copy - NO modification
@@ -71,7 +72,8 @@ class ImageViewerService:
             # Get client info
             client_info = self._get_client_info()
             client_os = client_info.get('client_os', 'windows').lower()
-            client_ip = client_info.get('client_ip', '10.10.2.1')
+            # TODO: Revert 10.10.2.1    
+            client_ip = client_info.get('client_ip', '10.10.2.126')
             
             # Create network path
             if client_os == "windows":
@@ -120,10 +122,10 @@ class ImageViewerService:
                     return
             except Exception:
                 logger.debug("HTTP trigger failed, trying other methods")
-            
+            #TODO: Revert
             # Method 2: Create trigger file
             try:
-                trigger_file = Path("/mnt/shared/open_image.txt")
+                trigger_file = Path("/mnt/shared2/2025-06-20/Morning Shift/open_image.txt")
                 with open(trigger_file, 'w') as f:
                     f.write(image_path)
                 

@@ -10,12 +10,13 @@ import uuid
 import time
 import shutil
 from loguru import logger
+from sqlalchemy import text
+import traceback
 
 router = APIRouter(prefix="/detect", tags=["detection"])
 
 @router.post("/detect-defect")
 async def detect_defect(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     el_folder_path: str = Form(default=""),
     confidence: float = Form(default=settings.confidence_threshold),
@@ -83,10 +84,36 @@ async def detect_defect(
         )
         
         # Save to database in background
-        background_tasks.add_task(
-            save_detection_record, db, record_data, detection_result, detection_id
-        )
-        
+        try:
+            logger.info(f"💾 Attempting to save database record: {detection_id}")
+            
+            record = DetectionRecord(
+                id=uuid.UUID(detection_id),
+                **record_data.model_dump(),
+                detection_details=detection_result,  # This might cause serialization error
+                status="completed",
+                processed_at=datetime.now(timezone.utc)
+            )
+            
+            db.add(record)
+            await db.commit()
+            logger.success(f"✅ Database record saved successfully: {detection_id}")
+            
+        except Exception as db_error:
+            logger.error(f"❌ DATABASE SAVE FAILED: {detection_id}")
+            logger.error(f"Error type: {type(db_error).__name__}")
+            logger.error(f"Error message: {str(db_error)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            
+            # Try to rollback
+            try:
+                await db.rollback()
+            except:
+                pass
+            
+            # Continue anyway - don't fail the API response
+            logger.warning("Continuing without database save - check logs for DB errors")
+
         logger.success(f"Detection completed: {detection_id} ({total_processing_time}ms)")
         
         return {
@@ -158,3 +185,23 @@ async def get_detection_status(
         }
     except ValueError:
         raise HTTPException(400, "Invalid detection ID format")
+    
+@router.get("/test-db")
+async def test_database(db: AsyncSession = Depends(get_session)):
+    """Test database connection and create a dummy record"""
+    try:
+        # Test basic connection
+        await db.execute(text("SELECT 1"))
+        logger.info("✅ Database connection test passed")
+        
+        # Test table exists
+        result = await db.execute(text("SELECT COUNT(*) FROM detection_records"))
+        count = result.scalar()
+        logger.info(f"✅ Table exists with {count} records")
+        
+        return {"status": "success", "message": f"Database has {count} records"}
+        
+    except Exception as e:
+        logger.error(f"❌ Database test failed: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return {"status": "error", "message": str(e)}
