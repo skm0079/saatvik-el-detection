@@ -285,9 +285,9 @@ class ELWatchdogService:
 async def main():
     """Main entry point"""
     
-    # Configuration
-    # WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
-    WATCH_PATH = "/mnt/shared2/2025-06-20/Morning Shift"  # Your SMB mount path
+    # TODO: Revert : Configuration -> 
+    WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
+    # WATCH_PATH = "/mnt/shared2/2025-06-21/Morning Shift"  # Your SMB mount path
 
     API_ENDPOINT = "http://localhost:8000/api/v1/detect"  # Local FastAPI
     EXCLUDED_FOLDERS = {"NG", "OK","processed"}  # Level 1 folders to ignore

@@ -48,9 +48,9 @@ class ImageViewerService:
         
     # TODO: Revert 10.10.2.1    
     def _get_client_info(self) -> dict:
-        """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1  """ ,
+        """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1 / 10.10.1.194 """ ,
         return {
-            'client_ip': '10.10.2.1 ',
+            'client_ip': '10.10.2.1',
             'client_os': 'windows',
             'client_type': 'windows'
         }
@@ -59,9 +59,9 @@ class ImageViewerService:
         """Simple copy to shared folder and trigger client"""
         try:
             # TODO: Revert : shared2 -> shared
-            # Possible VAlues -> /mnt/shared2/2025-06-20/Morning Shift/processed or /mnt/shared
+            # Possible Values -> /mnt/shared2/2025-06-20/Morning Shift/processed or /mnt/shared/processed or /mnt/shared1/processed
             # Create shared processed folder
-            shared_dir = Path("/mnt/shared")
+            shared_dir = Path("/mnt/shared/processed")
             shared_dir.mkdir(parents=True, exist_ok=True)
             
             # Simple copy - NO modification
@@ -73,7 +73,7 @@ class ImageViewerService:
             # Get client info
             client_info = self._get_client_info()
             client_os = client_info.get('client_os', 'windows').lower()
-            # TODO: Revert 10.10.2.1 or 10.10.2.126
+            # TODO: Revert 10.10.2.1 or 10.10.2.126 or 10.10.1.194
             client_ip = client_info.get('client_ip', '10.10.2.1')
             
             # Create network path
@@ -86,7 +86,7 @@ class ImageViewerService:
             logger.info(f"🪟 Network path: {network_path}")
             
             # Post Result Ready & Dropped to Client State
-            logger.info(f"🪟 Result Ready :: Source Path : {image_path} || Destination Path: {shared_image_path}")
+            logger.info(f"🪟 Result Ready :: Source Path : {shared_image_path} || Destination Path: {image_path}")
             
             
             logger.success(f"✅ Triggered {client_os} client: {image_path.name}")
