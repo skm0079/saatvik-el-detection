@@ -1,10 +1,22 @@
 # File: app/models/detection_record.py
 
 from sqlmodel import SQLModel, Field, Column, JSON
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Enum as SQLEnum
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from enum import Enum
+
+class DetectionStatus(str, Enum):
+    """Detection processing status enum"""
+    RECEIVED = "received"           # API call received, file uploaded
+    PROCESSING = "processing"       # YOLO model running
+    AI_COMPLETE = "ai_complete"     # AI detection finished
+    RESULTS_SAVED = "results_saved" # Results saved to processed folder
+    CLIENT_NOTIFIED = "client_notified"  # Client/viewer triggered
+    COMPLETED = "completed"         # Fully completed (kept for backward compatibility)
+    FAILED = "failed"              # Processing failed
+    SAVED = "saved"                # Final status - everything done and saved
 
 class DetectionRecordBase(SQLModel):
     # Source info
@@ -22,10 +34,8 @@ class DetectionRecordBase(SQLModel):
     json_results_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
     
-    # Image metadata
+    # File metadata (removed image_width, image_height)
     file_size_bytes: int
-    image_width: Optional[int] = None
-    image_height: Optional[int] = None
 
 class DetectionRecord(DetectionRecordBase, table=True):
     __tablename__ = "detection_records"
@@ -37,24 +47,50 @@ class DetectionRecord(DetectionRecordBase, table=True):
         default=None, sa_column=Column(JSON)
     )
     
-    # Status
-    status: str = Field(default="completed")
+    # Status tracking with enum
+    status: DetectionStatus = Field(
+        default=DetectionStatus.RECEIVED,
+        sa_column=Column(SQLEnum(DetectionStatus))
+    )
     error_message: Optional[str] = None
     
-    # FIXED: Force timezone-aware columns
+    # Status transition timestamps
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True))
     )
-    processed_at: Optional[datetime] = Field(
+    processing_started_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True))
     )
-    scheduled_deletion_date: Optional[datetime] = Field(
+    ai_completed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    results_saved_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    client_notified_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    completed_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True))
     )
     
+    # Legacy field (for backward compatibility)
+    processed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    
+    # Cleanup tracking
+    scheduled_deletion_date: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
     is_archived: bool = Field(default=False)
 
 class DetectionRecordCreate(SQLModel):
@@ -68,11 +104,23 @@ class DetectionRecordCreate(SQLModel):
     json_results_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
     file_size_bytes: int
-    image_width: Optional[int] = None
-    image_height: Optional[int] = None
 
 class DetectionRecordRead(DetectionRecordBase):
     id: UUID
-    status: str
+    status: DetectionStatus
     created_at: datetime
     detection_details: Optional[Dict[str, Any]] = None
+    processing_started_at: Optional[datetime] = None
+    ai_completed_at: Optional[datetime] = None
+    results_saved_at: Optional[datetime] = None
+    client_notified_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+class DetectionRecordUpdate(SQLModel):
+    status: Optional[DetectionStatus] = None
+    error_message: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    ai_completed_at: Optional[datetime] = None
+    results_saved_at: Optional[datetime] = None
+    client_notified_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None

@@ -1,3 +1,10 @@
 {
-    "makefile.configureOnOpen": true
+    "makefile.configureOnOpen": true,
+    "typescript.preferences.includePackageJsonAutoImports": "on",
+    "typescript.suggest.autoImports": true,
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "emmet.includeLanguages": {
+        "typescript": "html",
+        "typescriptreact": "html"
+    }
 }

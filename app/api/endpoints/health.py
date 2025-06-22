@@ -34,7 +34,7 @@ async def detailed_health_check(
     
     try:
         from sqlalchemy import text
-        await db.execute(text("SELECT 1"))
+        await db.exec(text("SELECT 1"))
         db_status = "connected"
     except Exception as e:
         print(f"Database error details: {e}")

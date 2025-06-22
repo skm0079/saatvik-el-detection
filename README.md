@@ -3,6 +3,8 @@
 ```bash
 docker system prune -a -f --volumes
 ```
+sudo chown -R $USER:$USER saatvik-el-detection/
+
 
 ### IP List (as of 21-06-2025)
 
@@ -11,6 +13,45 @@ Kayword: TODO: Revert
 1. 10.10.2.126 -> Production Line 2 :: Folder Name: ``
 2. 10.10.
 3. 10.10.2.1 -> Test Machine :: Folder Name : `/mnt/shared`
+
+---
+
+docker exec -it saatvik-el-db psql -U postgres -d saatvik_el_db
+
+-- Drop table if exists
+DROP TABLE IF EXISTS detection_records;
+
+-- Create table with correct timezone columns
+CREATE TABLE detection_records (
+    id UUID PRIMARY KEY,
+    original_filename VARCHAR NOT NULL,
+    el_folder_path VARCHAR NOT NULL,
+    source_file_path VARCHAR NOT NULL,
+    total_defects INTEGER NOT NULL DEFAULT 0,
+    confidence_threshold FLOAT NOT NULL,
+    processing_time_ms INTEGER NOT NULL,
+    annotated_image_path VARCHAR,
+    json_results_path VARCHAR,
+    thumbnail_path VARCHAR,
+    file_size_bytes INTEGER NOT NULL,
+    image_width INTEGER,
+    image_height INTEGER,
+    detection_details JSON,
+    status VARCHAR NOT NULL DEFAULT 'completed',
+    error_message VARCHAR,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMP WITH TIME ZONE,
+    scheduled_deletion_date TIMESTAMP WITH TIME ZONE,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- Verify the table
+\d detection_records
+
+-- Exit
+\q
+
+---
 
 ### Dev <-> Stage Run Checklist
 

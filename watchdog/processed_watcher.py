@@ -9,6 +9,7 @@ Processed Folder Watcher + Windows Client Trigger
 """
 
 import asyncio
+from datetime import datetime
 import platform
 import shutil
 from pathlib import Path
@@ -58,8 +59,16 @@ class ImageViewerService:
     def _copy_to_shared_and_trigger(self, image_path: Path):
         """Simple copy to shared folder and trigger client"""
         try:
-            # TODO: Revert : shared2 -> shared
-            # Possible Values -> /mnt/shared2/2025-06-20/Morning Shift/processed or /mnt/shared/processed or /mnt/shared1/processed
+            # Extract detection_id from filename (first part before underscore)
+            # Filename format: detection_id_original_filename_annotated.jpg
+            filename_parts = image_path.name.split('_')
+            if len(filename_parts) >= 2:
+                detection_id = filename_parts[0]
+                logger.info(f"🔍 Extracted detection_id: {detection_id}")
+            else:
+                detection_id = None
+                logger.warning(f"Could not extract detection_id from {image_path.name}")
+            
             # Create shared processed folder
             shared_dir = Path("/mnt/shared/processed")
             shared_dir.mkdir(parents=True, exist_ok=True)
@@ -73,7 +82,6 @@ class ImageViewerService:
             # Get client info
             client_info = self._get_client_info()
             client_os = client_info.get('client_os', 'windows').lower()
-            # TODO: Revert 10.10.2.1 or 10.10.2.126 or 10.10.1.194
             client_ip = client_info.get('client_ip', '10.10.2.1')
             
             # Create network path
@@ -88,13 +96,33 @@ class ImageViewerService:
             # Post Result Ready & Dropped to Client State
             logger.info(f"🪟 Result Ready :: Source Path : {shared_image_path} || Destination Path: {image_path}")
             
+            # Update status to SAVED only if we have detection_id
+            if detection_id:
+                try:
+                    import requests
+                    from datetime import datetime
+                    
+                    api_response = requests.put(
+                        f"http://localhost:8000/api/v1/detect/status/{detection_id}",
+                        json={
+                            "status": "saved",
+                            "client_notified_at": datetime.now().isoformat(),
+                            "completed_at": datetime.now().isoformat()
+                        },
+                        timeout=5
+                    )
+                    if api_response.status_code == 200:
+                        logger.success(f"📊 Status updated to SAVED for {detection_id}")
+                    else:
+                        logger.warning(f"Failed to update status: {api_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Could not update status to SAVED: {e}")
             
-            logger.success(f"✅ Triggered {client_os} client: {image_path.name}")
+            logger.success(f"✅ Dropped to {client_os} client: {image_path.name}")
             
         except Exception as e:
             logger.error(f"Failed to copy and trigger: {e}")
-    
-    
+
     async def process_images(self):
         """Process new images from queue"""
         while True:
@@ -180,6 +208,27 @@ class ImageViewerService:
             
             self.observer.join()
             logger.info("✅ Processed watcher stopped")
+
+    def _extract_detection_id(self, filename: str) -> str:
+        """Extract detection_id from processed image filename"""
+        try:
+            # Expected format: detection_id_original_filename_annotated.jpg
+            # Example: a1b2c3d4-e5f6-7890-abcd-ef1234567890_solar_panel_001_annotated.jpg
+            
+            # Split by underscore and take first part
+            parts = filename.split('_')
+            potential_id = parts[0]
+            
+            # Validate it looks like a UUID (basic check)
+            if len(potential_id) == 36 and potential_id.count('-') == 4:
+                return potential_id
+            else:
+                logger.warning(f"Filename doesn't contain valid detection_id: {filename}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to extract detection_id from {filename}: {e}")
+            return None
 
 async def main():
     """Main entry point"""
