@@ -1,15 +1,16 @@
 # File: app/models/detection_record.py
 
 from sqlmodel import SQLModel, Field, Column, JSON
+from sqlalchemy import DateTime
 from uuid import UUID, uuid4
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any
 
 class DetectionRecordBase(SQLModel):
     # Source info
     original_filename: str
-    el_folder_path: str  # e.g., "el/2025/01/shift1"
-    source_file_path: str  # Local source copy path
+    el_folder_path: str
+    source_file_path: str
     
     # Processing results
     total_defects: int = 0
@@ -37,19 +38,38 @@ class DetectionRecord(DetectionRecordBase, table=True):
     )
     
     # Status
-    status: str = Field(default="completed")  # processing, completed, failed
+    status: str = Field(default="completed")
     error_message: Optional[str] = None
     
-    # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    processed_at: Optional[datetime] = None
+    # FIXED: Force timezone-aware columns
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True))
+    )
+    processed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    scheduled_deletion_date: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True))
+    )
     
-    # For future rotational cleanup
-    scheduled_deletion_date: Optional[datetime] = None
     is_archived: bool = Field(default=False)
 
-class DetectionRecordCreate(DetectionRecordBase):
-    pass
+class DetectionRecordCreate(SQLModel):
+    original_filename: str
+    el_folder_path: str
+    source_file_path: str
+    total_defects: int = 0
+    confidence_threshold: float
+    processing_time_ms: int
+    annotated_image_path: Optional[str] = None
+    json_results_path: Optional[str] = None
+    thumbnail_path: Optional[str] = None
+    file_size_bytes: int
+    image_width: Optional[int] = None
+    image_height: Optional[int] = None
 
 class DetectionRecordRead(DetectionRecordBase):
     id: UUID
