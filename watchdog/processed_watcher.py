@@ -61,7 +61,7 @@ class ImageViewerService:
         #     "client_type": get_config("client_type", "windows"),
         # }
         return {
-            "client_ip": "10.10.2.1",
+            "client_ip": "10.10.1.194",
             "client_os": "windows",
             "client_type": "windows",
         }
