@@ -6,7 +6,8 @@ import { Dashboard } from '@/components/Dashboard';
 import { DetectionHistory } from '@/components/DetectionHistory';
 import { DetectionDetail } from '@/components/DetectionDetail';
 import { ROUTES } from '@/constants/config';
-import '@/styles/globals.css';
+// import '@/styles/globals.css';
+import '@/styles/tailwind.css'
 
 function App() {
   return (

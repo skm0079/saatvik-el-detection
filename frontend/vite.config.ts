@@ -8,7 +8,7 @@ const __dirname = new URL('.', import.meta.url).pathname
 
 export default defineConfig({
   plugins: [react()],
-  
+
   // Build to FastAPI static directory
   build: {
     outDir: '../app/static',

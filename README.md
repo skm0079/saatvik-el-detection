@@ -5,6 +5,9 @@ docker system prune -a -f --volumes
 ```
 sudo chown -R $USER:$USER saatvik-el-detection/
 
+```bash 
+docker volume inspect saatvik-el-detection_postgres_data
+```
 
 ### IP List (as of 21-06-2025)
 
