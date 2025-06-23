@@ -59,6 +59,11 @@ class ImageViewerService:
             "client_os": get_config("client_os", "windows"),
             "client_type": get_config("client_type", "windows"),
         }
+        # return {
+        #     "client_ip": "10.10.2.1",
+        #     "client_os": "windows",
+        #     "client_type": "windows",
+        # }
 
     def _copy_to_shared_and_trigger(self, image_path: Path):
         """Simple copy to shared folder and trigger client"""
