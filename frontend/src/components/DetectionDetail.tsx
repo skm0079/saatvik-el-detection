@@ -21,8 +21,14 @@ export function DetectionDetail() {
   if (error) return <ErrorMessage message={error} onRetry={refetch} />;
   if (!detection) return <ErrorMessage message="Detection not found" />;
 
-  const originalUrl = ImageUtils.getOriginalUrl(detection.annotated_image_path);
-  const annotatedUrl = ImageUtils.getAnnotatedUrl(detection.annotated_image_path);
+  // Safe URL construction with fallbacks
+  const originalUrl = detection.annotated_image_path
+    ? ImageUtils.getOriginalUrl(detection.annotated_image_path)
+    : '/processed/placeholder.jpg';
+
+  const annotatedUrl = detection.annotated_image_path
+    ? ImageUtils.getAnnotatedUrl(detection.annotated_image_path)
+    : '/processed/placeholder.jpg';
 
   const openFullscreen = (imageType: 'original' | 'annotated') => {
     setCurrentImage(imageType);

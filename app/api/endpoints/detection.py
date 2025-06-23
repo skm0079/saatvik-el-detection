@@ -19,8 +19,10 @@ import time
 import shutil
 from loguru import logger
 import traceback
+from sqlalchemy import text
 
 router = APIRouter(prefix="/detect", tags=["detection"])
+
 
 @router.post("/detect-defect")
 async def detect_defect(
@@ -74,9 +76,9 @@ async def detect_defect(
             original_filename=file.filename,
             el_folder_path=el_folder_path or settings.el_folder_path,
             source_file_path=f"source/{detection_id}_{file.filename}",
-            total_defects=0,  # Will be updated
+            total_defects=0,
             confidence_threshold=confidence,
-            processing_time_ms=0,  # Will be updated
+            processing_time_ms=0,
             file_size_bytes=file_stats.st_size,
         )
 
@@ -161,20 +163,15 @@ async def detect_defect(
 
         # Update record with final results and RESULTS_SAVED status
         try:
-            update_data = DetectionRecordUpdate(
-                status=DetectionStatus.RESULTS_SAVED,
-                results_saved_at=datetime.now(timezone.utc),
-            )
-            logger.info(
-                f"📝 Updating record with RESULTS_SAVED status: {detection_id}"
-            )
-            logger.logger.debug(f"Update data: {update_data.model_dump()}")
-            # Update the record
+            # FIXED: Use execute() + scalars() for compatibility
             stmt = select(DetectionRecord).where(
                 DetectionRecord.id == uuid.UUID(detection_id)
             )
-            result = await db.exec(stmt)
-            record = result.one()
+            result = await db.execute(stmt)
+            record = result.scalars().first()
+
+            if not record:
+                raise Exception("Record not found after creation")
 
             # Update fields
             record.total_defects = detection_result["total_defects"]
@@ -185,8 +182,8 @@ async def detect_defect(
             record.detection_details = clean_detection_details
             record.status = DetectionStatus.RESULTS_SAVED
             record.results_saved_at = datetime.now(timezone.utc)
-            record.completed_at = datetime.now(timezone.utc)  # Legacy field
-            record.processed_at = datetime.now(timezone.utc)  # Legacy field
+            record.completed_at = datetime.now(timezone.utc)
+            record.processed_at = datetime.now(timezone.utc)
 
             await db.commit()
             await db.refresh(record)
@@ -260,23 +257,25 @@ async def update_detection_status(
 ):
     """Helper function to update detection status and timestamps"""
     try:
+        # FIXED: Use execute() + scalars() for compatibility
         stmt = select(DetectionRecord).where(
             DetectionRecord.id == uuid.UUID(detection_id)
         )
-        result = await db.exec(stmt)
-        record = result.one()
+        result = await db.execute(stmt)
+        record = result.scalars().first()
 
-        record.status = status
-        if error_message:
-            record.error_message = error_message
+        if record:
+            record.status = status
+            if error_message:
+                record.error_message = error_message
 
-        # Update timestamp fields
-        for field, value in timestamp_kwargs.items():
-            if hasattr(record, field):
-                setattr(record, field, value)
+            # Update timestamp fields
+            for field, value in timestamp_kwargs.items():
+                if hasattr(record, field):
+                    setattr(record, field, value)
 
-        await db.commit()
-        logger.info(f"📊 Status updated to {status.value}: {detection_id}")
+            await db.commit()
+            logger.info(f"📊 Status updated to {status.value}: {detection_id}")
 
     except Exception as e:
         logger.error(f"Failed to update status for {detection_id}: {e}")
@@ -294,11 +293,12 @@ async def update_detection_status_api(
 ):
     """API endpoint to update detection status (for external systems like watchdog)"""
     try:
+        # FIXED: Use execute() + scalars() for compatibility
         stmt = select(DetectionRecord).where(
             DetectionRecord.id == uuid.UUID(detection_id)
         )
-        result = await db.exec(stmt)
-        record = result.one_or_none()
+        result = await db.execute(stmt)
+        record = result.scalars().first()
 
         if not record:
             raise HTTPException(404, "Detection record not found")
@@ -388,6 +388,7 @@ async def get_recent_detections(
 ):
     """Get recent detection records for frontend"""
     try:
+        # FIXED: Use execute() + scalars() for compatibility
         # Build query
         stmt = select(DetectionRecord).order_by(DetectionRecord.created_at.desc())
 
@@ -398,15 +399,15 @@ async def get_recent_detections(
         # Add pagination
         stmt = stmt.offset(offset).limit(limit)
 
-        result = await db.exec(stmt)
-        records = result.all()
+        result = await db.execute(stmt)
+        records = result.scalars().all()
 
         # Get total count
         count_stmt = select(func.count(DetectionRecord.id))
         if status:
             count_stmt = count_stmt.where(DetectionRecord.status == status)
-        count_result = await db.exec(count_stmt)
-        total = count_result.one()
+        count_result = await db.execute(count_stmt)
+        total = count_result.scalar()
 
         return {
             "total": total,
@@ -438,18 +439,16 @@ async def get_recent_detections(
 async def test_database(db: AsyncSession = Depends(get_session)):
     """Test database connection and operations"""
     try:
-        from sqlalchemy import text
-
         # Test basic connection
         logger.info("🔍 Testing database connection...")
-        result = await db.exec(text("SELECT 1"))
-        result.one()
+        result = await db.execute(text("SELECT 1"))
+        result.scalar()
         logger.info("✅ Database connection test passed")
 
         # Test table count
         count_stmt = select(func.count(DetectionRecord.id))
-        count_result = await db.exec(count_stmt)
-        count = count_result.one()
+        count_result = await db.execute(count_stmt)
+        count = count_result.scalar()
         logger.info(f"✅ Table exists with {count} records")
 
         return {

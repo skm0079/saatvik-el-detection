@@ -17,11 +17,17 @@ export class ImageUtils {
    * Replace /annotated/ with /original/ and _annotated with _original
    */
   static getOriginalUrl(annotatedPath: string): string {
+    // Handle null/undefined safely
+    if (!annotatedPath) {
+      console.warn('getOriginalUrl: annotatedPath is null or undefined');
+      return '/processed/placeholder.jpg'; // Return placeholder
+    }
+
     const originalPath = annotatedPath
       .replace('/annotated/', '/original/')
       .replace('_annotated.jpg', '_original.jpg')
       .replace('_annotated.png', '_original.png');
-    
+
     return `/processed/${originalPath}`;
   }
 
@@ -85,12 +91,12 @@ export class ImageUtils {
     const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
     let unitIndex = 0;
-    
+
     while (size >= 1024 && unitIndex < 3) {
       size /= 1024;
       unitIndex++;
     }
-    
+
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
 

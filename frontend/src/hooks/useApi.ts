@@ -42,14 +42,16 @@ export function useDetectionDetail(detection_id: string) {
 
   const fetchData = async () => {
     if (!detection_id) return;
-    
+
     try {
       setLoading(true);
       setError(null);
       const result = await apiService.getDetectionById(detection_id);
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Detection not found');
+      const errorMessage = err instanceof Error ? err.message : 'Detection not found';
+      setError(errorMessage);
+      console.error('Detection fetch error:', err);
     } finally {
       setLoading(false);
     }

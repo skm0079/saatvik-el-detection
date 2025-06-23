@@ -1,4 +1,5 @@
-# File: app/main.py
+
+# File: app/main.py - SUSTAINABLE SOLUTION
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +42,7 @@ async def lifespan(app: FastAPI):
     logger.success("🎯 Saatvik EL Detection API ready!")
     yield
 
-# Create single FastAPI instance with lifespan
+# Create FastAPI instance
 app = FastAPI(
     title=settings.project_name,
     description="AI-powered solar panel EL defect detection system",
@@ -60,44 +61,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# IMPORTANT: Include API routes FIRST (before any static mounting)
+# ========================================
+# CRITICAL: ROUTE MOUNTING ORDER MATTERS!
+# ========================================
+
+# 1. FIRST: Include all API routes
 app.include_router(api_router, prefix=settings.api_v1_str)
 
-# Mount processed images as static files
+# 2. SECOND: Mount specific static directories (not catch-all)
 app.mount("/processed", StaticFiles(directory="processed"), name="processed")
 
-# Custom StaticFiles class to handle SPA routing
+# 3. THIRD: Custom SPA handler (ONLY for frontend routes)
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         try:
             return await super().get_response(path, scope)
         except (HTTPException, StarletteHTTPException) as ex:
             if ex.status_code == 404:
-                return await super().get_response("index.html", scope)
-            else:
-                raise ex
+                # Only return index.html for non-API routes
+                request_path = scope.get("path", "")
+                if not request_path.startswith("/api/"):
+                    return await super().get_response("index.html", scope)
+            raise ex
 
-# Mount React app LAST (only if static files exist)
-if os.path.exists("app/static") and os.listdir("app/static"):
-    app.mount("/", SPAStaticFiles(directory="app/static", html=True), name="static")
+# 4. LAST: Mount React app (ONLY if exists and not empty)
+static_dir = "app/static"
+if os.path.exists(static_dir) and os.listdir(static_dir):
+    print("✅ Mounting React SPA at root")
+    app.mount("/", SPAStaticFiles(directory=static_dir, html=True), name="spa")
 else:
-    print("⚠️  Static directory not found - React app not built yet")
+    print("⚠️  No React build found - API only mode")
     
-    # Fallback route when no React app
+    # Fallback simple home page
     @app.get("/", response_class=HTMLResponse)
-    async def root():
-        """Simple home page"""
-        return f"""
+    async def api_home():
+        return """
         <html>
             <head><title>Saatvik EL Detection API</title></head>
             <body>
-                <h1>🔍 Saatvik EL Defect Detection API</h1>
-                <p>AI-powered solar panel defect detection system</p>
+                <h1>🔍 Saatvik EL Detection API</h1>
+                <p>✅ API is running in standalone mode</p>
                 <ul>
-                    <li><a href="/docs">📚 API Documentation (Swagger)</a></li>
+                    <li><a href="/docs">📚 API Documentation</a></li>
                     <li><a href="/api/v1/health">💚 Health Check</a></li>
-                    <li><a href="/api/v1/health/detailed">🔧 Detailed Health</a></li>
                 </ul>
+                <p><em>Frontend will be available after React build</em></p>
             </body>
         </html>
         """
