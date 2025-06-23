@@ -1,6 +1,18 @@
 # File: docker-compose.staging.yml
-
 services:
+  # Frontend build service for staging
+  frontend-build-stage:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.build
+    container_name: saatvik-el-frontend-build-stage
+    volumes:
+      # Output React build to staging static directory
+      - ./app/static:/app/dist:rw
+    environment:
+      - NODE_ENV=production
+
+  # FastAPI backend service for staging
   fastapi-app-stage:
     build:
       context: .
@@ -25,15 +37,20 @@ services:
       # Application code
       - ./app:/app/app:ro
       - ./models:/app/models:ro
+      # Static files from frontend build
+      - ./app/static:/app/app/static:ro
     depends_on:
       postgres-stage:
         condition: service_healthy
+      frontend-build-stage:
+        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
+  # PostgreSQL database for staging
   postgres-stage:
     image: postgres:15.0-alpine
     container_name: saatvik-el-db-stage

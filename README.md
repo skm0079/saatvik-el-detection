@@ -55,6 +55,26 @@ CREATE TABLE detection_records (
 \q
 
 ---
+Complete Development
+# This starts everything in one command
+make dev
+
+# It will:
+# 1. Start backend (API + DB) in Docker
+# 2. Start frontend with hot reload
+# Keep both terminals open
+
+
+Option 2: Manual Control (Advanced)
+# Terminal 1: Start backend
+make dev-backend
+
+# Terminal 2: Start frontend (hot reload)
+make dev-frontend
+
+# Edit frontend code → auto-refresh! 🔥
+# Edit backend code → restart with: make stop-dev && make dev-backend
+
 
 ### Dev <-> Stage Run Checklist
 

@@ -16,7 +16,8 @@ from loguru import logger
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 from queue import Queue
-from constants.constants import get_client_ip, get_shared_path, get_config
+
+# from constants.constants import get_client_ip, get_config
 
 
 class ProcessedImageWatcher(FileSystemEventHandler):
@@ -54,16 +55,16 @@ class ImageViewerService:
     # TODO: Revert 10.10.2.1
     def _get_client_info(self) -> dict:
         """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1 / 10.10.1.194 """,
-        return {
-            "client_ip": get_client_ip(),
-            "client_os": get_config("client_os", "windows"),
-            "client_type": get_config("client_type", "windows"),
-        }
         # return {
-        #     "client_ip": "10.10.2.1",
-        #     "client_os": "windows",
-        #     "client_type": "windows",
+        #     "client_ip": get_client_ip(),
+        #     "client_os": get_config("client_os", "windows"),
+        #     "client_type": get_config("client_type", "windows"),
         # }
+        return {
+            "client_ip": "10.10.2.1",
+            "client_os": "windows",
+            "client_type": "windows",
+        }
 
     def _copy_to_shared_and_trigger(self, image_path: Path):
         """Simple copy to shared folder and trigger client"""

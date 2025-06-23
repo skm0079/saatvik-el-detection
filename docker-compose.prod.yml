@@ -1,6 +1,18 @@
 # File: docker-compose.prod.yml
-
 services:
+  # Frontend build service for production
+  frontend-build-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.build
+    container_name: saatvik-el-frontend-build-prod
+    volumes:
+      # Output React build to production static directory
+      - ./app/static:/app/dist:rw
+    environment:
+      - NODE_ENV=production
+
+  # FastAPI backend service for production
   fastapi-app-prod:
     build:
       context: .
@@ -25,9 +37,13 @@ services:
       # Application code (read-only for production)
       - ./app:/app/app:ro
       - ./models:/app/models:ro
+      # Static files from frontend build
+      - ./app/static:/app/app/static:ro
     depends_on:
       postgres-prod:
         condition: service_healthy
+      frontend-build-prod:
+        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
@@ -40,6 +56,7 @@ services:
           memory: 2G
           cpus: '1.0'
 
+  # PostgreSQL database for production
   postgres-prod:
     image: postgres:15.0-alpine
     container_name: saatvik-el-db-prod

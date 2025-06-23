@@ -1,18 +1,6 @@
-# File: docker-compose.yml (Development with Frontend)
+# File: docker-compose.dev-simple.yml - Backend only for development
 services:
-  # Frontend build service - runs first to build React app
-  frontend-build:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.build
-    container_name: saatvik-el-frontend-build
-    volumes:
-      # Output React build to FastAPI static directory
-      - ./app/static:/app/dist:rw
-    environment:
-      - NODE_ENV=production
-
-  # FastAPI backend service
+  # FastAPI backend service only
   fastapi-app:
     build: .
     container_name: saatvik-el-api
@@ -35,13 +23,9 @@ services:
       # Application code
       - ./app:/app/app:ro
       - ./models:/app/models:ro
-      # Static files from frontend build
-      - ./app/static:/app/app/static:ro
     depends_on:
       postgres:
         condition: service_healthy
-      frontend-build:
-        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
