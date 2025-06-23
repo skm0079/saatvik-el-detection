@@ -20,3 +20,8 @@ wheels/
 /processed
 /models
 processed_files.json
+
+# Database data directories
+data/
+staging/data/
+production/data/

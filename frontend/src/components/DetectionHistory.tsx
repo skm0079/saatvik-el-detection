@@ -11,7 +11,7 @@ import type { SearchFilters } from '@/types';
 
 export function DetectionHistory() {
   const navigate = useNavigate();
-  const [limit, setLimit] = useState(UI.DEFAULT_LIMIT);
+  const [limit, setLimit] = useState<number>(UI.DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<SearchFilters>({});
   const [search, setSearch] = useState('');

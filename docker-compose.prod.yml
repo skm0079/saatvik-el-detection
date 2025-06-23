@@ -68,7 +68,7 @@ services:
     ports:
       - "5434:5432" # Different port for production DB
     volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
+      - ./production/data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s

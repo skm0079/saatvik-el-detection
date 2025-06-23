@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHealth, useRecentDetections } from '@/hooks/useApi';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { ErrorMessage } from '@/components/common/ErrorMessage';
+// import { ErrorMessage } from '@/components/common/ErrorMessage';
 import { ROUTES, UI } from '@/constants/config';
 
 export function Dashboard() {
@@ -27,8 +27,9 @@ export function Dashboard() {
     return new Date(d.created_at).toDateString() === today;
   }).length || 0;
 
-  const avgProcessingTime = recent?.detections.reduce((acc, d) => acc + d.processing_time_ms, 0)
-    / (recent?.detections.length || 1) || 0;
+  const avgProcessingTime = recent?.detections && recent.detections.length > 0
+    ? recent.detections.reduce((acc, d) => acc + d.processing_time_ms, 0) / recent.detections.length
+    : 0;
 
   return (
     <div className="space-y-8">
