@@ -72,7 +72,7 @@ dev: ## Start complete development environment (backend + frontend hot reload)
 	@$(MAKE) dev-backend
 	@echo ""
 	@echo "⏳ Waiting for backend to be ready..."
-	@sleep 10
+	@sleep 25
 	@echo ""
 	@echo "🔥 Starting frontend with hot reload..."
 	@$(MAKE) dev-frontend

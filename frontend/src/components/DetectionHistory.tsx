@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRecentDetections } from '@/hooks/useApi';
+import { useSearch } from '@/hooks/useSearch';
 import { ImageUtils } from '@/services/imageUtils';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
@@ -14,15 +15,18 @@ export function DetectionHistory() {
   const [limit, setLimit] = useState<number>(UI.DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<SearchFilters>({});
-  const [search, setSearch] = useState('');
 
   const { data, loading, error, refetch } = useRecentDetections(limit, offset, filters);
 
-  // Handle search
-  const handleSearch = () => {
-    setFilters({ ...filters, search: search || undefined });
-    setOffset(0); // Reset to first page
-  };
+  // Real-time search with debounce
+  const { searchQuery, setSearchQuery, isWaitingForMinLength } = useSearch({
+    minLength: 3,
+    delay: 500,
+    onSearch: (query: string) => {
+      setFilters({ ...filters, search: query || undefined });
+      setOffset(0); // Reset to first page when searching
+    }
+  });
 
   // Handle pagination
   const handleNextPage = () => {
@@ -35,12 +39,6 @@ export function DetectionHistory() {
     if (offset > 0) {
       setOffset(Math.max(0, offset - limit));
     }
-  };
-
-  // Handle filter changes
-  const handleStatusFilter = (status: string) => {
-    setFilters({ ...filters, status: status || undefined });
-    setOffset(0);
   };
 
   // Navigate to detail view
@@ -71,47 +69,56 @@ export function DetectionHistory() {
         </button>
       </div>
 
-      {/* Search and Filters */}
+      {/* Enhanced Search - Real-time with debounce */}
       <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search Box */}
+          {/* Real-time Search Box */}
           <div className="flex-1">
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search by filename..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search by filename (min 3 characters)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               />
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <span className="text-slate-400">🔍</span>
               </div>
+
+              {/* Search Status Indicator */}
+              {isWaitingForMinLength && (
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  <span className="text-yellow-500 text-sm">Type {3 - searchQuery.length} more...</span>
+                </div>
+              )}
+
+              {filters.search && (
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilters({ ...filters, search: undefined });
+                    }}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Search Info */}
+            <div className="mt-2 text-sm text-slate-500">
+              {filters.search ? (
+                <span className="text-blue-600">🔍 Searching for: "{filters.search}"</span>
+              ) : searchQuery.length > 0 && searchQuery.length < 3 ? (
+                <span className="text-yellow-600">⏳ Type {3 - searchQuery.length} more characters to search</span>
+              ) : (
+                <span>Type 3+ characters to search instantly</span>
+              )}
             </div>
           </div>
-
-          {/* Status Filter */}
-          <div className="sm:w-48">
-            <select
-              onChange={(e) => handleStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            >
-              <option value="">All Status</option>
-              <option value="completed">✅ Completed</option>
-              <option value="processing">🔄 Processing</option>
-              <option value="failed">❌ Failed</option>
-              <option value="pending">⏳ Pending</option>
-            </select>
-          </div>
-
-          {/* Search Button */}
-          <button
-            onClick={handleSearch}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200"
-          >
-            🔍 Search
-          </button>
         </div>
       </div>
 
@@ -119,6 +126,11 @@ export function DetectionHistory() {
       <div className="flex justify-between items-center text-sm text-slate-600">
         <p>
           Showing {offset + 1}-{Math.min(offset + limit, data.total)} of {data.total} detections
+          {filters.search && (
+            <span className="ml-2 text-blue-600 font-medium">
+              (filtered by "{filters.search}")
+            </span>
+          )}
         </p>
         <div className="flex items-center space-x-2">
           <span>Show:</span>
@@ -135,7 +147,7 @@ export function DetectionHistory() {
         </div>
       </div>
 
-      {/* Detection Grid */}
+      {/* Detection Grid - Unchanged */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {data.detections.map((detection) => (
           <div
@@ -158,7 +170,7 @@ export function DetectionHistory() {
 
               {/* Status Badge */}
               <div className="absolute top-3 right-3">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${detection.status === 'completed' ? 'bg-green-100 text-green-800' :
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${detection.status === 'completed' || detection.status === 'saved' ? 'bg-green-100 text-green-800' :
                   detection.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                     detection.status === 'failed' ? 'bg-red-100 text-red-800' :
                       'bg-yellow-100 text-yellow-800'
@@ -186,7 +198,7 @@ export function DetectionHistory() {
               </div>
             </div>
 
-            {/* Card Content */}
+            {/* Card Content - Unchanged */}
             <div className="p-4">
               <h3 className="font-semibold text-slate-900 mb-2 truncate" title={detection.original_filename}>
                 {detection.original_filename}
@@ -220,7 +232,7 @@ export function DetectionHistory() {
         ))}
       </div>
 
-      {/* Pagination */}
+      {/* Pagination - Unchanged */}
       <div className="flex justify-center items-center space-x-4 py-8">
         <button
           onClick={handlePrevPage}

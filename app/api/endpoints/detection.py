@@ -281,54 +281,54 @@ async def update_detection_status(
         await db.rollback()
 
 
-@router.put("/status/{detection_id}")
-async def update_detection_status_api(
-    detection_id: str,
-    status: DetectionStatus,
-    client_notified_at: datetime = None,
-    completed_at: datetime = None,
-    error_message: str = None,
-    db: AsyncSession = Depends(get_session),
+@router.get("/status/{detection_id}")
+async def get_detection_status(
+    detection_id: str, db: AsyncSession = Depends(get_session)
 ):
-    """API endpoint to update detection status (for external systems like watchdog)"""
+    """Get detailed status of a specific detection"""
     try:
-        # FIXED: Use execute() + scalars() for compatibility
-        stmt = select(DetectionRecord).where(
-            DetectionRecord.id == uuid.UUID(detection_id)
-        )
-        result = await db.execute(stmt)
-        record = result.scalars().first()
-
+        record = await db.get(DetectionRecord, uuid.UUID(detection_id))
         if not record:
             raise HTTPException(404, "Detection record not found")
 
-        # Update status
-        record.status = status
-        if error_message:
-            record.error_message = error_message
-        if client_notified_at:
-            record.client_notified_at = client_notified_at
-        if completed_at:
-            record.completed_at = completed_at
-
-        # If status is SAVED, mark as final completion
-        if status == DetectionStatus.SAVED:
-            record.completed_at = datetime.now(timezone.utc)
-
-        await db.commit()
-        await db.refresh(record)
-
-        logger.info(f"📊 Status updated via API to {status.value}: {detection_id}")
-
         return {
-            "detection_id": detection_id,
+            "detection_id": str(record.id),
             "status": record.status.value,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "original_filename": record.original_filename,
+            "total_defects": record.total_defects,
+            "processing_time_ms": record.processing_time_ms,
+            "confidence_threshold": record.confidence_threshold,
+            "created_at": record.created_at.isoformat(),
+            "processing_started_at": (
+                record.processing_started_at.isoformat()
+                if record.processing_started_at
+                else None
+            ),
+            "ai_completed_at": (
+                record.ai_completed_at.isoformat() if record.ai_completed_at else None
+            ),
+            "results_saved_at": (
+                record.results_saved_at.isoformat() if record.results_saved_at else None
+            ),
+            "client_notified_at": (
+                record.client_notified_at.isoformat()
+                if record.client_notified_at
+                else None
+            ),
+            "completed_at": (
+                record.completed_at.isoformat() if record.completed_at else None
+            ),
+            "file_size_bytes": record.file_size_bytes,
+            "error_message": record.error_message,
+            "annotated_image_path": record.annotated_image_path,
+            "thumbnail_path": record.thumbnail_path,
+            "el_folder_path": record.el_folder_path,
         }
-
+    except ValueError:
+        raise HTTPException(400, "Invalid detection ID format")
     except Exception as e:
-        logger.error(f"Failed to update detection status: {e}")
-        raise HTTPException(500, f"Update failed: {str(e)}")
+        logger.error(f"Failed to get detection status: {e}")
+        raise HTTPException(500, f"Database error: {str(e)}")
 
 
 @router.get("/status/{detection_id}")
