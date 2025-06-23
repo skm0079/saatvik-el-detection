@@ -14,7 +14,7 @@ export const ROUTES = {
 } as const;
 
 export const UI = {
-  DEFAULT_LIMIT: 20,
+  DEFAULT_LIMIT: 10,
   REFRESH_INTERVAL: 30000
 } as const;
 
