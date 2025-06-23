@@ -11,7 +11,6 @@ from app.models.detection_record import (
     DetectionRecord,
     DetectionRecordCreate,
     DetectionStatus,
-    DetectionRecordUpdate,
 )
 from pathlib import Path
 import uuid
