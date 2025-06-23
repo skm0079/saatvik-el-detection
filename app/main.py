@@ -1,4 +1,4 @@
-# File: app/main.py - SUSTAINABLE SOLUTION
+# File: app/main.py - COMPLETE FIXED VERSION
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,35 +65,51 @@ app.add_middleware(
 )
 
 # ========================================
-# CRITICAL: ROUTE MOUNTING ORDER MATTERS!
+# FIXED: DYNAMIC ROUTE MOUNTING FOR ALL FOLDERS
 # ========================================
 
 # 1. FIRST: Include all API routes
 app.include_router(api_router, prefix=settings.api_v1_str)
 
-# 2. SECOND: Mount specific static directories (not catch-all)
-app.mount("/processed", StaticFiles(directory="processed"), name="processed")
-app.mount("/source", StaticFiles(directory="processed"), name="source")
+# 2. SECOND: Mount all static directories dynamically
+static_folders = ["processed", "source", "staging", "production"]
+mounted_paths = []
 
-# # For Staging
-# app.mount("staging/processed", StaticFiles(directory="processed"), name="processed")
-# app.mount("staging/source", StaticFiles(directory="processed"), name="processed")
+for folder in static_folders:
+    if os.path.exists(folder):
+        app.mount(f"/{folder}", StaticFiles(directory=folder), name=f"{folder}_files")
+        mounted_paths.append(f"/{folder}")
+        print(f"✅ Mounted /{folder} directory")
 
-# # For Production
-# app.mount("production/processed", StaticFiles(directory="processed"), name="processed")
-# app.mount("production/source", StaticFiles(directory="processed"), name="processed")
+# Also mount subdirectories for staging/production
+for env in ["staging", "production"]:
+    if os.path.exists(env):
+        for subfolder in ["processed", "source", "backup", "logs"]:
+            full_path = os.path.join(env, subfolder)
+            if os.path.exists(full_path):
+                mount_path = f"/{env}/{subfolder}"
+                app.mount(
+                    mount_path,
+                    StaticFiles(directory=full_path),
+                    name=f"{env}_{subfolder}_files",
+                )
+                mounted_paths.append(mount_path)
+                print(f"✅ Mounted {mount_path} directory")
 
 
-# 3. THIRD: Custom SPA handler (ONLY for frontend routes)
+# 3. THIRD: Custom SPA handler with dynamic exclusions
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         try:
             return await super().get_response(path, scope)
         except (HTTPException, StarletteHTTPException) as ex:
             if ex.status_code == 404:
-                # Only return index.html for non-API routes
                 request_path = scope.get("path", "")
-                if not request_path.startswith("/api/"):
+                # Exclude API routes and all mounted static paths
+                excluded_prefixes = ["/api/", "/docs", "/redoc"] + mounted_paths
+                if not any(
+                    request_path.startswith(prefix) for prefix in excluded_prefixes
+                ):
                     return await super().get_response("index.html", scope)
             raise ex
 
@@ -102,6 +118,7 @@ class SPAStaticFiles(StaticFiles):
 static_dir = "app/static"
 if os.path.exists(static_dir) and os.listdir(static_dir):
     print("✅ Mounting React SPA at root")
+    print(f"✅ SPA exclusions: {mounted_paths}")
     app.mount("/", SPAStaticFiles(directory=static_dir, html=True), name="spa")
 else:
     print("⚠️  No React build found - API only mode")
