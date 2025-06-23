@@ -1,4 +1,3 @@
-
 # File: app/main.py - SUSTAINABLE SOLUTION
 import os
 from fastapi import FastAPI, HTTPException
@@ -15,32 +14,36 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 # Setup logging
 setup_logging()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown logic."""
     from loguru import logger
+
     logger.info("🚀 Starting Saatvik EL Detection API...")
-    
+
     # Create database tables
     await create_db_and_tables()
     logger.info("✅ Database initialized")
-    
+
     # Verify YOLO model
     try:
         from app.services.yolo_service import get_yolo_service
+
         yolo_service = get_yolo_service()
         logger.info("✅ YOLO model loaded successfully")
     except Exception as e:
         logger.error(f"❌ Failed to load YOLO model: {e}")
-    
+
     # Check directories
     settings.source_dir.mkdir(exist_ok=True)
     settings.processed_dir.mkdir(exist_ok=True)
     settings.backup_dir.mkdir(exist_ok=True)
     logger.info("✅ Directories created")
-    
+
     logger.success("🎯 Saatvik EL Detection API ready!")
     yield
+
 
 # Create FastAPI instance
 app = FastAPI(
@@ -49,7 +52,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -70,6 +73,16 @@ app.include_router(api_router, prefix=settings.api_v1_str)
 
 # 2. SECOND: Mount specific static directories (not catch-all)
 app.mount("/processed", StaticFiles(directory="processed"), name="processed")
+app.mount("/source", StaticFiles(directory="processed"), name="source")
+
+# # For Staging
+# app.mount("staging/processed", StaticFiles(directory="processed"), name="processed")
+# app.mount("staging/source", StaticFiles(directory="processed"), name="processed")
+
+# # For Production
+# app.mount("production/processed", StaticFiles(directory="processed"), name="processed")
+# app.mount("production/source", StaticFiles(directory="processed"), name="processed")
+
 
 # 3. THIRD: Custom SPA handler (ONLY for frontend routes)
 class SPAStaticFiles(StaticFiles):
@@ -84,6 +97,7 @@ class SPAStaticFiles(StaticFiles):
                     return await super().get_response("index.html", scope)
             raise ex
 
+
 # 4. LAST: Mount React app (ONLY if exists and not empty)
 static_dir = "app/static"
 if os.path.exists(static_dir) and os.listdir(static_dir):
@@ -91,7 +105,7 @@ if os.path.exists(static_dir) and os.listdir(static_dir):
     app.mount("/", SPAStaticFiles(directory=static_dir, html=True), name="spa")
 else:
     print("⚠️  No React build found - API only mode")
-    
+
     # Fallback simple home page
     @app.get("/", response_class=HTMLResponse)
     async def api_home():

@@ -8,14 +8,16 @@ export const API = {
 } as const;
 
 export const ROUTES = {
-  DASHBOARD: '/',
+  LIVE: '/',           // Live Image Viewer (new landing page)
+  DASHBOARD: '/dashboard',
   HISTORY: '/history',
   DETAIL: '/detail'
 } as const;
 
 export const UI = {
   DEFAULT_LIMIT: 10,
-  REFRESH_INTERVAL: 30000
+  REFRESH_INTERVAL: 30000,  // 30 seconds for auto-refresh
+  POLLING_INTERVAL: 10000   // 10 seconds for live mode
 } as const;
 
 export const MESSAGES = {

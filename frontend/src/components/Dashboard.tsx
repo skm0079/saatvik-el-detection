@@ -36,7 +36,7 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">🏭 Saatvik EL Detection System</h1>
+          <h1 className="text-3xl font-bold text-slate-900">🏭 Saatvik EL Detection</h1>
           <p className="text-slate-600 mt-1">Real-time solar panel defect detection and analysis</p>
         </div>
         <button

@@ -1,6 +1,6 @@
 // file: src/components/DetectionHistory.tsx
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRecentDetections } from '@/hooks/useApi';
 import { useSearch } from '@/hooks/useSearch';
@@ -18,33 +18,45 @@ export function DetectionHistory() {
 
   const { data, loading, error, refetch } = useRecentDetections(limit, offset, filters);
 
-  // Real-time search with debounce
+  const handleSearch = useCallback((query: string) => {
+    setFilters(prev => ({ ...prev, search: query || undefined }));
+    setOffset(0); // Reset to first page when searching
+  }, []);
+
+  // Real-time search with debounce - now with stable callback
   const { searchQuery, setSearchQuery, isWaitingForMinLength } = useSearch({
     minLength: 3,
     delay: 500,
-    onSearch: (query: string) => {
-      setFilters({ ...filters, search: query || undefined });
-      setOffset(0); // Reset to first page when searching
-    }
+    onSearch: handleSearch  // Stable reference
   });
 
-  // Handle pagination
-  const handleNextPage = () => {
+  // FIXED: Memoized pagination handlers
+  const handleNextPage = useCallback(() => {
     if (data && offset + limit < data.total) {
-      setOffset(offset + limit);
+      setOffset(prev => prev + limit);
     }
-  };
+  }, [data, offset, limit]);
 
-  const handlePrevPage = () => {
+  const handlePrevPage = useCallback(() => {
     if (offset > 0) {
-      setOffset(Math.max(0, offset - limit));
+      setOffset(prev => Math.max(0, prev - limit));
     }
-  };
+  }, [offset, limit]);
 
-  // Navigate to detail view
-  const handleViewDetail = (detection_id: string) => {
+  const handleViewDetail = useCallback((detection_id: string) => {
     navigate(`${ROUTES.DETAIL}/${detection_id}`);
-  };
+  }, [navigate]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setFilters(prev => ({ ...prev, search: undefined }));
+  }, [setSearchQuery]);
+
+  // FIXED: Memoized limit change handler
+  const handleLimitChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setLimit(Number(e.target.value));
+    setOffset(0); // Reset to first page when changing limit
+  }, []);
 
   if (loading) return <LoadingSpinner message="Loading detections..." />;
   if (error) return <ErrorMessage message={error} onRetry={refetch} />;
@@ -96,10 +108,7 @@ export function DetectionHistory() {
               {filters.search && (
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                   <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setFilters({ ...filters, search: undefined });
-                    }}
+                    onClick={handleClearSearch}
                     className="text-slate-400 hover:text-slate-600"
                   >
                     ✕
@@ -136,7 +145,7 @@ export function DetectionHistory() {
           <span>Show:</span>
           <select
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            onChange={handleLimitChange}
             className="border border-slate-300 rounded px-2 py-1 text-sm"
           >
             <option value={10}>10</option>
@@ -147,7 +156,7 @@ export function DetectionHistory() {
         </div>
       </div>
 
-      {/* Detection Grid - Unchanged */}
+      {/* Detection Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {data.detections.map((detection) => (
           <div
@@ -198,7 +207,7 @@ export function DetectionHistory() {
               </div>
             </div>
 
-            {/* Card Content - Unchanged */}
+            {/* Card Content */}
             <div className="p-4">
               <h3 className="font-semibold text-slate-900 mb-2 truncate" title={detection.original_filename}>
                 {detection.original_filename}
@@ -232,7 +241,7 @@ export function DetectionHistory() {
         ))}
       </div>
 
-      {/* Pagination - Unchanged */}
+      {/* Pagination */}
       <div className="flex justify-center items-center space-x-4 py-8">
         <button
           onClick={handlePrevPage}
