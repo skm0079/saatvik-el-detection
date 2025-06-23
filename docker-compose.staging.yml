@@ -10,7 +10,7 @@ services:
     container_name: saatvik-el-api-stage
     restart: unless-stopped
     ports:
-      - "8001:8000"  # Different port for staging
+      - "8001:8000" # Different port for staging
     env_file:
       - .env.staging
     volumes:
@@ -29,7 +29,7 @@ services:
       postgres-stage:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -43,11 +43,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"  # Different port for staging DB
+      - "5433:5432" # Different port for staging DB
     volumes:
       - postgres_data_staging:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5

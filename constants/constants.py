@@ -4,7 +4,7 @@ import os
 
 # Environment configuration - EDIT THIS DICT TO CHANGE VALUES
 ENVIRONMENT_CONFIG = {
-    "dev": {
+    "prod": {
         "client_ip": "10.10.2.126",
         "client_os": "windows",
         "client_type": "windows",
@@ -13,7 +13,6 @@ ENVIRONMENT_CONFIG = {
         "excluded_folders": {"NG", "OK", "processed"},
         "confidence_threshold": 0.2,
         "api_endpoint": "http://localhost:8000/api/v1/detect",
-        "trigger_file_path": "/mnt/shared/open_image.txt",
     },
     "staging": {
         "client_ip": "10.10.2.1",
@@ -24,9 +23,8 @@ ENVIRONMENT_CONFIG = {
         "excluded_folders": {"NG", "OK", "processed"},
         "confidence_threshold": 0.3,
         "api_endpoint": "http://localhost:8001/api/v1/detect",
-        "trigger_file_path": "/mnt/shared2/2025-06-20/Morning Shift/open_image.txt",
     },
-    "prod": {
+    "dev": {
         "client_ip": "10.10.2.1",
         "client_os": "windows",
         "client_type": "windows",
@@ -35,7 +33,6 @@ ENVIRONMENT_CONFIG = {
         "excluded_folders": {"NG", "OK", "processed"},
         "confidence_threshold": 0.5,
         "api_endpoint": "http://localhost:8002/api/v1/detect",
-        "trigger_file_path": "/mnt/shared/open_image.txt",
     },
 }
 
