@@ -13,8 +13,8 @@ docker volume inspect saatvik-el-detection_postgres_data
 
 Kayword: TODO: Revert
 
-1. 10.10.2.126 -> Production Line 2 :: Folder Name: ``
-2. 10.10.
+1. 10.10.2.126 -> Pre eLLine 2 :: Folder Name: ``
+2. 10.10.1.194 -> Desktop with Display
 3. 10.10.2.1 -> Test Machine :: Folder Name : `/mnt/shared`
 
 ---
