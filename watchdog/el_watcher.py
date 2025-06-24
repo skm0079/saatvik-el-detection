@@ -68,6 +68,7 @@ class ELImageWatcher(FileSystemEventHandler):
             return
 
         file_path = Path(event.src_path)
+        logger.info(f"🔍 Processing file event: {file_path}")
 
         # Check if file is in excluded level 1 folder
         try:
@@ -76,8 +77,10 @@ class ELImageWatcher(FileSystemEventHandler):
                 len(relative_path.parts) > 0
                 and relative_path.parts[0] in self.excluded_folders
             ):
+                logger.info(f"⏭️ Skipping excluded folder: {relative_path.parts[0]}")
                 return  # Skip this file
-        except ValueError:
+        except ValueError as e:
+            logger.warning(f"Path calculation error: {e}")
             pass  # File not under watch path
 
         # Only process image files
@@ -85,13 +88,22 @@ class ELImageWatcher(FileSystemEventHandler):
             logger.info(f"🔍 NEW FILE DETECTED: {file_path.name}")
 
             # Check if already processed to avoid duplicates
+            logger.info(f"📝 Calculating hash for: {file_path.name}")
             file_hash = self._get_file_hash(file_path)
+            logger.info(f"📝 Hash calculated: {file_hash[:8]}... for {file_path.name}")
+
             if file_hash and file_hash in self.processed_files:
                 logger.debug(f"Already processed: {file_path.name}")
                 return
 
             # Add to queue for async processing
+            logger.info(f"📤 Adding to queue: {file_path.name}")
             self.file_queue.put((str(file_path), file_hash))
+            logger.info(
+                f"✅ Added to queue: {file_path.name}, queue size: {self.file_queue.qsize()}"
+            )
+        else:
+            logger.info(f"⏭️ Skipping non-image file: {file_path.name}")
 
     def on_moved(self, event):
         """Handle file moves"""
@@ -157,9 +169,12 @@ class ELWatchdogService:
         """Process a single file"""
         try:
             file_path = Path(file_path_str)
+            logger.info(f"📁 File path object created: {file_path}")
 
             # Wait for file to be fully written (important for network mounts)
+            logger.info(f"⏳ Waiting 5 seconds for file to be fully written...")
             await asyncio.sleep(5)
+            logger.info(f"✅ Wait complete, checking file existence...")
 
             # Verify file still exists and is readable
             if not file_path.exists():

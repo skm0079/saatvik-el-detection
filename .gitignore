@@ -25,3 +25,5 @@ processed_files.json
 data/
 staging/data/
 production/data/
+
+app/static/

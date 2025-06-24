@@ -65,15 +65,28 @@ app.add_middleware(
 )
 
 # ========================================
-# FIXED: DYNAMIC ROUTE MOUNTING FOR ALL FOLDERS
+# FIXED: STATIC FILE ROUTING WITH SMB SOURCE
 # ========================================
 
 # 1. FIRST: Include all API routes
 app.include_router(api_router, prefix=settings.api_v1_str)
 
-# 2. SECOND: Mount all static directories dynamically
-static_folders = ["processed", "source", "staging", "production"]
-mounted_paths = []
+# 2. SECOND: Mount SMB source directory (THE FIX!)
+if settings.smb_mount_path.exists():
+    app.mount(
+        "/source",
+        StaticFiles(directory=str(settings.smb_mount_path)),
+        name="smb_source",
+    )
+    print(f"✅ Mounted /source -> {settings.smb_mount_path}")
+else:
+    error_msg = f"❌ CRITICAL: SMB mount not found at {settings.smb_mount_path}"
+    print(error_msg)
+    raise RuntimeError(f"SMB mount required but not found: {settings.smb_mount_path}")
+
+# 3. THIRD: Mount all other static directories dynamically
+static_folders = ["processed", "staging", "production"]
+mounted_paths = ["/api/", "/docs", "/redoc", "/source"]  # Include /source in exclusions
 
 for folder in static_folders:
     if os.path.exists(folder):
@@ -97,7 +110,7 @@ for env in ["staging", "production"]:
                 print(f"✅ Mounted {mount_path} directory")
 
 
-# 3. THIRD: Custom SPA handler with dynamic exclusions
+# 4. FOURTH: Custom SPA handler with dynamic exclusions
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         try:
@@ -106,15 +119,12 @@ class SPAStaticFiles(StaticFiles):
             if ex.status_code == 404:
                 request_path = scope.get("path", "")
                 # Exclude API routes and all mounted static paths
-                excluded_prefixes = ["/api/", "/docs", "/redoc"] + mounted_paths
-                if not any(
-                    request_path.startswith(prefix) for prefix in excluded_prefixes
-                ):
+                if not any(request_path.startswith(prefix) for prefix in mounted_paths):
                     return await super().get_response("index.html", scope)
             raise ex
 
 
-# 4. LAST: Mount React app (ONLY if exists and not empty)
+# 5. LAST: Mount React app (ONLY if exists and not empty)
 static_dir = "app/static"
 if os.path.exists(static_dir) and os.listdir(static_dir):
     print("✅ Mounting React SPA at root")
