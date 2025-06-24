@@ -1,9 +1,12 @@
 // file: src/components/layout/Navigation.tsx
 
 import { NavLink } from 'react-router-dom';
+import { useHealth } from '@/hooks/useApi';
 import { ROUTES } from '@/constants/config';
 
 export function Navigation() {
+  const { data: health } = useHealth();
+
   return (
     <nav className="bg-slate-800 border-b border-slate-700 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -61,12 +64,21 @@ export function Navigation() {
             </NavLink>
           </div>
 
-          {/* Status Indicator */}
+          {/* Status Indicator with Machine Info */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
               <span className="text-slate-400 text-sm">AI Ready</span>
             </div>
+
+            {health && (
+              <div className="flex items-center space-x-2 text-slate-400 text-sm">
+                <span>•</span>
+                <span>🤖 {health.machine_name}</span>
+                <span>•</span>
+                <span className="capitalize">{health.environment}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

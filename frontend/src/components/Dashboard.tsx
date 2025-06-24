@@ -1,18 +1,24 @@
 // file: src/components/Dashboard.tsx
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useHealth, useRecentDetections } from '@/hooks/useApi';
+import { useHealth, useRecentDetections, useMachines } from '@/hooks/useApi';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { MachineSelector } from '@/components/common/MachineSelector';
 // import { ErrorMessage } from '@/components/common/ErrorMessage';
-import { ROUTES, UI } from '@/constants/config';
+import { ROUTES, UI, MACHINE_FILTER } from '@/constants/config';
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { data: health, loading: healthLoading, error: healthError, refetch: refetchHealth } = useHealth();
-  const { data: recent, loading: recentLoading, refetch: refetchRecent } = useRecentDetections(5, 0);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
 
-  // Auto-refresh every 30 seconds
+  const { data: health, loading: healthLoading, error: healthError, refetch: refetchHealth } = useHealth();
+  const { data: machines } = useMachines();
+  const { data: recent, loading: recentLoading, refetch: refetchRecent } = useRecentDetections(
+    5, 0, { machine_id: selectedMachine ?? undefined }
+  );
+
+  // Auto-refresh every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       refetchHealth();
@@ -33,18 +39,36 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
+      {/* Header with Machine Selector */}
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-slate-900">🏭 Saatvik EL Detection</h1>
           <p className="text-slate-600 mt-1">Real-time solar panel defect detection and analysis</p>
+
+          {/* Machine Context Display */}
+          {health && (
+            <div className="mt-3 flex items-center space-x-4 text-sm text-slate-600">
+              <span>🤖 Machine: <strong>{health.machine_name}</strong></span>
+              <span>🏭 Environment: <strong>{health.environment}</strong></span>
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => navigate(ROUTES.HISTORY)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-md hover:shadow-lg"
-        >
-          📋 View All Detections
-        </button>
+
+        <div className="flex flex-col items-end space-y-4">
+          <button
+            onClick={() => navigate(ROUTES.HISTORY)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 shadow-md hover:shadow-lg"
+          >
+            📋 View All Detections
+          </button>
+
+          {/* Machine Selector */}
+          <MachineSelector
+            selectedMachine={selectedMachine}
+            onMachineChange={setSelectedMachine}
+            className="text-sm"
+          />
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -84,7 +108,9 @@ export function Dashboard() {
             <div>
               <p className="text-sm font-medium text-slate-600">📊 Today's Activity</p>
               <p className="text-2xl font-bold text-slate-900 mt-2">{totalToday}</p>
-              <p className="text-xs text-slate-500">Images Processed</p>
+              <p className="text-xs text-slate-500">
+                {selectedMachine === MACHINE_FILTER.ALL_MACHINES ? 'All Machines' : 'Current Machine'}
+              </p>
             </div>
             <div className="text-3xl">📈</div>
           </div>
@@ -108,7 +134,9 @@ export function Dashboard() {
             <div>
               <p className="text-sm font-medium text-slate-600">📈 Total Records</p>
               <p className="text-2xl font-bold text-slate-900 mt-2">{recent?.total || 0}</p>
-              <p className="text-xs text-slate-500">Total Detections</p>
+              <p className="text-xs text-slate-500">
+                {selectedMachine === MACHINE_FILTER.ALL_MACHINES ? 'All Machines' : machines?.current_machine || 'Current Machine'}
+              </p>
             </div>
             <div className="text-3xl">📊</div>
           </div>
@@ -118,7 +146,14 @@ export function Dashboard() {
       {/* Recent Activity */}
       <div className="bg-white rounded-xl shadow-md border border-slate-200">
         <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-slate-900">🕒 Recent Activity</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">🕒 Recent Activity</h2>
+            {selectedMachine === MACHINE_FILTER.ALL_MACHINES ? (
+              <p className="text-sm text-purple-600 font-medium">🌐 Showing all machines</p>
+            ) : (
+              <p className="text-sm text-green-600 font-medium">🤖 {machines?.current_machine || 'Current machine'}</p>
+            )}
+          </div>
           <button
             onClick={refetchRecent}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
@@ -144,7 +179,12 @@ export function Dashboard() {
                     </div>
                     <div>
                       <p className="font-medium text-slate-900">{detection.original_filename}</p>
-                      <p className="text-sm text-slate-500">{new Date(detection.created_at).toLocaleTimeString()}</p>
+                      <div className="flex items-center space-x-2 text-sm text-slate-500">
+                        <span>{new Date(detection.created_at).toLocaleTimeString()}</span>
+                        {selectedMachine === MACHINE_FILTER.ALL_MACHINES && (
+                          <span className="text-purple-600 font-medium">• 🤖 {detection.machine_name}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center space-x-4">

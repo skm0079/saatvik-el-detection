@@ -17,8 +17,8 @@ export const ROUTES = {
 
 export const UI = {
   DEFAULT_LIMIT: 10,
-  REFRESH_INTERVAL: 30000,  // 30 seconds for auto-refresh
-  POLLING_INTERVAL: 10000   // 10 seconds for live mode
+  REFRESH_INTERVAL: 3000,  // 3 seconds for auto-refresh
+  POLLING_INTERVAL: 4000   // 4 seconds for live mode
 } as const;
 
 export const MESSAGES = {

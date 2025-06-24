@@ -7,16 +7,16 @@ import { useSearch } from '@/hooks/useSearch';
 import { ImageUtils } from '@/services/imageUtils';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ErrorMessage } from '@/components/common/ErrorMessage';
-import { UI, ROUTES } from '@/constants/config';
+import { UI, ROUTES, MACHINE_FILTER } from '@/constants/config';
 import type { SearchFilters } from '@/types';
+import { MachineSelector } from './common/MachineSelector';
 
 export function DetectionHistory() {
   const navigate = useNavigate();
   const [limit, setLimit] = useState<number>(UI.DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<SearchFilters>({});
-
-  const { data, loading, error, refetch } = useRecentDetections(limit, offset, filters);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
 
   const handleSearch = useCallback((query: string) => {
     setFilters(prev => ({ ...prev, search: query || undefined }));
@@ -29,6 +29,14 @@ export function DetectionHistory() {
     delay: 500,
     onSearch: handleSearch  // Stable reference
   });
+
+  // Combine machine filter with other filters
+  const allFilters = {
+    ...filters,
+    machine_id: selectedMachine ?? undefined
+  };
+
+  const { data, loading, error, refetch } = useRecentDetections(limit, offset, allFilters);
 
   // FIXED: Memoized pagination handlers
   const handleNextPage = useCallback(() => {
@@ -46,6 +54,12 @@ export function DetectionHistory() {
   const handleViewDetail = useCallback((detection_id: string) => {
     navigate(`${ROUTES.DETAIL}/${detection_id}`);
   }, [navigate]);
+
+  // FIXED: Memoized machine change handler
+  const handleMachineChange = useCallback((machineId: string | null) => {
+    setSelectedMachine(machineId);
+    setOffset(0); // Reset to first page when changing machine
+  }, []);
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
@@ -81,9 +95,17 @@ export function DetectionHistory() {
         </button>
       </div>
 
-      {/* Enhanced Search - Real-time with debounce */}
+      {/* Machine Selector & Search */}
       <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Machine Selector */}
+          <div className="flex-shrink-0">
+            <MachineSelector
+              selectedMachine={selectedMachine}
+              onMachineChange={handleMachineChange}
+            />
+          </div>
+
           {/* Real-time Search Box */}
           <div className="flex-1">
             <div className="relative">
@@ -138,6 +160,16 @@ export function DetectionHistory() {
           {filters.search && (
             <span className="ml-2 text-blue-600 font-medium">
               (filtered by "{filters.search}")
+            </span>
+          )}
+          {selectedMachine === MACHINE_FILTER.ALL_MACHINES && (
+            <span className="ml-2 text-purple-600 font-medium">
+              (🌐 All Machines)
+            </span>
+          )}
+          {selectedMachine && selectedMachine !== MACHINE_FILTER.ALL_MACHINES && (
+            <span className="ml-2 text-green-600 font-medium">
+              (🤖 {selectedMachine})
             </span>
           )}
         </p>
@@ -212,6 +244,15 @@ export function DetectionHistory() {
               <h3 className="font-semibold text-slate-900 mb-2 truncate" title={detection.original_filename}>
                 {detection.original_filename}
               </h3>
+
+              {/* Machine Badge */}
+              {selectedMachine === MACHINE_FILTER.ALL_MACHINES && (
+                <div className="mb-2">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    🤖 {detection.machine_name}
+                  </span>
+                </div>
+              )}
 
               <div className="space-y-2 text-sm text-slate-600">
                 <div className="flex justify-between items-center">
