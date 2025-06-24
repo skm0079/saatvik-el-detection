@@ -13,7 +13,7 @@ async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False
 async def create_db_and_tables():
     async with engine.begin() as conn:
         # Force drop and recreate all tables, if Needed Else Only Create
-        await conn.run_sync(SQLModel.metadata.drop_all)
+        # await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
         print("✅ Database tables recreated with correct schema")
 

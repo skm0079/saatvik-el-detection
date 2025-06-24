@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { apiService } from '@/services/api';
-import type { RecentDetectionsResponse, DetectionRecord, HealthResponse, SearchFilters } from '@/types';
+import type {
+  RecentDetectionsResponse,
+  DetectionRecord,
+  HealthResponse,
+  SearchFilters,
+  MachineInfo
+} from '@/types';
 
 /**
- * Hook for fetching recent detections
+ * Hook for fetching recent detections with machine filtering
  */
 export function useRecentDetections(limit = 20, offset = 0, filters?: SearchFilters) {
   const [data, setData] = useState<RecentDetectionsResponse | null>(null);
@@ -65,7 +71,7 @@ export function useDetectionDetail(detection_id: string) {
 }
 
 /**
- * Hook for system health monitoring
+ * Hook for system health monitoring with machine context
  */
 export function useHealth() {
   const [data, setData] = useState<HealthResponse | null>(null);
@@ -80,6 +86,34 @@ export function useHealth() {
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Health check failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  return { data, loading, error, refetch: fetchData };
+}
+
+/**
+ * 🆕 NEW: Hook for fetching available machines
+ */
+export function useMachines() {
+  const [data, setData] = useState<MachineInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await apiService.getMachines();
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch machines');
     } finally {
       setLoading(false);
     }

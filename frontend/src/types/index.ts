@@ -4,6 +4,8 @@
 export interface DetectionRecord {
   detection_id: string;
   original_filename: string;
+  machine_id: string;          // 🆕 NEW: Machine context
+  machine_name: string;        // 🆕 NEW: Machine context
   total_defects: number;
   status: string;
   created_at: string;
@@ -12,6 +14,7 @@ export interface DetectionRecord {
   annotated_image_path: string;
   thumbnail_path: string;
   el_folder_path: string;
+  error_message?: string;
 }
 
 // Response from /api/v1/detect/recent
@@ -19,7 +22,16 @@ export interface RecentDetectionsResponse {
   total: number;
   limit: number;
   offset: number;
+  machine_filter: string;      // 🆕 NEW: Active machine filter
   detections: DetectionRecord[];
+}
+
+// 🆕 NEW: Machine info from /api/v1/detect/machines
+export interface MachineInfo {
+  current_machine: string;
+  current_mode: string;
+  available_machines: string[];
+  machine_names: Record<string, string>;
 }
 
 // Defect details from detection
@@ -40,11 +52,14 @@ export interface DefectDetails {
   };
 }
 
-// Health check response
+// Health check response with machine context
 export interface HealthResponse {
   status: string;
   timestamp: number;
   service: string;
+  machine_id: string;          // 🆕 NEW: Machine context
+  machine_name: string;        // 🆕 NEW: Machine context
+  environment: string;         // 🆕 NEW: Environment context
 }
 
 // Search filters for queries
@@ -55,4 +70,5 @@ export interface SearchFilters {
   date_to?: string;
   min_defects?: number;
   max_defects?: number;
+  machine_id?: string;         // 🆕 NEW: Machine filter
 }
