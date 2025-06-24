@@ -1,0 +1,59 @@
+{
+    "current_mode": "dev",
+    "modes": {
+        "dev": {
+            "machine_id": "dev",
+            "machine_name": "Factory-Line-Dev",
+            "smb_source_path": "/mnt/shared",
+            "smb_watch_path": "/mnt/shared/raw_el_images",
+            "smb_processed_path": "/mnt/shared/processed",
+            "api_base": "http://localhost:8000",
+            "api_endpoint": "http://localhost:8000/api/v1/detect",
+            "client_ip": "10.10.2.194",
+            "client_os": "windows",
+            "confidence_threshold": 0.2,
+            "excluded_folders": [
+                "NG",
+                "OK",
+                "processed"
+            ],
+            "database_name": "saatvik_el_db"
+        },
+        "staging": {
+            "machine_id": "staging",
+            "machine_name": "Factory-Line-Staging",
+            "smb_source_path": "/mnt/shared2/staging",
+            "smb_watch_path": "/mnt/shared2/staging/raw_el_images",
+            "smb_processed_path": "/mnt/shared2/staging/processed",
+            "api_base": "http://localhost:8001",
+            "api_endpoint": "http://localhost:8001/api/v1/detect",
+            "client_ip": "10.10.2.1",
+            "client_os": "windows",
+            "confidence_threshold": 0.3,
+            "excluded_folders": [
+                "NG",
+                "OK",
+                "processed"
+            ],
+            "database_name": "saatvik_el_db_staging"
+        },
+        "prod": {
+            "machine_id": "prod",
+            "machine_name": "Factory-Line-Production",
+            "smb_source_path": "/mnt/shared3/prod",
+            "smb_watch_path": "/mnt/shared3/prod/raw_el_images",
+            "smb_processed_path": "/mnt/shared3/prod/processed",
+            "api_base": "http://localhost:8002",
+            "api_endpoint": "http://localhost:8002/api/v1/detect",
+            "client_ip": "10.10.2.1",
+            "client_os": "windows",
+            "confidence_threshold": 0.5,
+            "excluded_folders": [
+                "NG",
+                "OK",
+                "processed"
+            ],
+            "database_name": "saatvik_el_db_prod"
+        }
+    }
+}

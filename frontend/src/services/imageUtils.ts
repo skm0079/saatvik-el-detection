@@ -13,22 +13,56 @@ export class ImageUtils {
   }
 
   /**
-   * Get original image URL from annotated path
-   * Replace /annotated/ with /original/ and _annotated with _original
+   * Get original image URL from annotated image path
+   * 
+   * FILE PATTERN ANALYSIS:
+   * - Source files (in ./source/): "detection_id_originalfilename.jpg"
+   *   Example: "04978bc4-3fba-4ad6-92d8-0b7216e14224_SGE0224THC2833064.jpg"
+   * 
+   * - Annotated files (in ./processed/timestamp/annotated/): "detection_id_originalfilename_annotated.jpg"
+   *   Example: "04978bc4-3fba-4ad6-92d8-0b7216e14224_SGE0224THC2833064_annotated.jpg"
+   * 
+   * TRANSFORMATION LOGIC:
+   * Input:  "20250624_082116/annotated/detection_id_filename_annotated.jpg"
+   * Output: "/source/detection_id_filename.jpg"
    */
   static getOriginalUrl(annotatedPath: string): string {
-    // Handle null/undefined safely
+    // STEP 1: Null/undefined safety check
     if (!annotatedPath) {
       console.warn('getOriginalUrl: annotatedPath is null or undefined');
-      return '/processed/placeholder.jpg'; // Return placeholder
+      return '/source/placeholder.jpg'; // Fallback for broken data
     }
 
-    const originalPath = annotatedPath
-      .replace('/annotated/', '/original/')
-      .replace('_annotated.jpg', '_original.jpg')
-      .replace('_annotated.png', '_original.png');
+    // STEP 2: Extract filename from full path
+    // Input: "20250624_082116/annotated/detection_id_filename_annotated.jpg"
+    // Split by '/' and get last part: "detection_id_filename_annotated.jpg"
+    const filename = annotatedPath.split('/').pop();
 
-    return `/processed/${originalPath}`;
+    // STEP 3: Validate filename extraction
+    if (!filename) {
+      console.warn('getOriginalUrl: Could not extract filename from path:', annotatedPath);
+      return '/source/placeholder.jpg'; // Fallback for malformed paths
+    }
+
+    // STEP 4: Transform annotated filename to source filename
+    // Remove "_annotated" suffix to match source file naming
+    // "detection_id_filename_annotated.jpg" → "detection_id_filename.jpg"
+    // "detection_id_filename_annotated.png" → "detection_id_filename.png"
+    const originalFilename = filename
+      .replace('_annotated.jpg', '.jpg')  // Handle JPG files
+      .replace('_annotated.png', '.png'); // Handle PNG files
+
+    // STEP 5: Debug logging (remove in production)
+    console.log('Input annotated path:', annotatedPath);
+    console.log('Extracted filename:', filename);
+    console.log('Generated original filename:', originalFilename);
+
+    // STEP 6: Construct final static URL
+    // Static route "/source" maps to ./source/ folder in project root
+    const finalUrl = `/source/${originalFilename}`;
+    console.log('Final original URL:', finalUrl);
+
+    return finalUrl;
   }
 
   /**

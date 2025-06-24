@@ -23,6 +23,7 @@ services:
       # Application code
       - ./app:/app/app:ro
       - ./models:/app/models:ro
+      - ./shared_config.json:/app/shared_config.json:ro
     depends_on:
       postgres:
         condition: service_healthy

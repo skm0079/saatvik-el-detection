@@ -9,6 +9,9 @@ Simple, Robust EL Image Watcher
 - Simple configuration
 """
 
+import json
+from pathlib import Path
+import os
 import asyncio
 import httpx
 import hashlib
@@ -317,12 +320,17 @@ class ELWatchdogService:
 async def main():
     """Main entry point"""
 
-    # TODO: Revert : Configuration ->
-    WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
-    # WATCH_PATH = "/mnt/shared2/2025-06-21/Morning Shift"  # Your SMB mount path
+    # Load current mode config
+    config = load_config()
 
-    API_ENDPOINT = "http://localhost:8000/api/v1/detect"  # Local FastAPI
-    EXCLUDED_FOLDERS = {"NG", "OK", "processed"}  # Level 1 folders to ignore
+    WATCH_PATH = config["smb_watch_path"]  # "/mnt/shared/raw_el_images"
+    API_ENDPOINT = config["api_endpoint"]  # "http://localhost:8000/api/v1/detect"
+    EXCLUDED_FOLDERS = set(config["excluded_folders"])  # {"NG", "OK", "processed"}
+
+    # TODO: Revert : Configuration ->
+    # WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
+    # API_ENDPOINT = "http://localhost:8000/api/v1/detect"  # Local FastAPI
+    # EXCLUDED_FOLDERS = {"NG", "OK", "processed"}  # Level 1 folders to ignore
 
     logger.info("🚀 Saatvik EL Image Watcher Starting...")
     logger.info(f"📁 Watch Path: {WATCH_PATH}")
@@ -356,6 +364,24 @@ async def main():
         logger.info("🛑 Interrupted by user")
     except Exception as e:
         logger.error(f"❌ Unexpected error: {e}")
+
+
+def load_config():
+    """Load configuration from shared_config.json"""
+    config_file = Path("shared_config.json")
+    if not config_file.exists():
+        raise RuntimeError(
+            f"❌ shared_config.json not found at {config_file.absolute()}"
+        )
+
+    with open(config_file, "r") as f:
+        config = json.load(f)
+
+    current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
+    if current_mode not in config["modes"]:
+        raise RuntimeError(f"❌ Mode '{current_mode}' not found in config")
+
+    return config["modes"][current_mode]
 
 
 if __name__ == "__main__":

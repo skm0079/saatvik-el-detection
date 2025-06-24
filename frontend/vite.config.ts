@@ -20,7 +20,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://localhost:8000',
-      '/processed': 'http://localhost:8000'
+      '/processed': 'http://localhost:8000',
+      '/source': 'http://localhost:8000'
     }
   },
 

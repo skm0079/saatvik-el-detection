@@ -37,6 +37,7 @@ services:
       - ./models:/app/models:ro
       # Static files from frontend build
       - ./app/static:/app/app/static:ro
+      - ./shared_config.json:/app/shared_config.json:ro
     depends_on:
       postgres:
         condition: service_healthy

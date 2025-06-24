@@ -8,6 +8,8 @@ Processed Folder Watcher + Windows Client Trigger
 - NO image modification, NO infinite loops
 """
 
+import json
+import os
 import asyncio
 import platform
 import shutil
@@ -53,18 +55,44 @@ class ImageViewerService:
         self.observer = PollingObserver(timeout=3)
 
     # TODO: Revert 10.10.2.1
+    # def _get_client_info(self) -> dict:
+    #     """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1 / 10.10.1.194 """,
+    #     return {
+    #         "client_ip": "10.10.1.194",
+    #         "client_os": "windows",
+    #         "client_type": "windows",
+    #     }
+
     def _get_client_info(self) -> dict:
-        """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1 / 10.10.1.194 """,
-        # return {
-        #     "client_ip": get_client_ip(),
-        #     "client_os": get_config("client_os", "windows"),
-        #     "client_type": get_config("client_type", "windows"),
-        # }
-        return {
-            "client_ip": "10.10.1.194",
-            "client_os": "windows",
-            "client_type": "windows",
-        }
+        """Get client info from shared config"""
+        config_file = Path("shared_config.json")
+        if not config_file.exists():
+            # Fallback to current values if config missing
+            return {
+                "client_ip": "10.10.1.194",
+                "client_os": "windows",
+                "client_type": "windows",
+            }
+
+        try:
+            with open(config_file, "r") as f:
+                config = json.load(f)
+
+            current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
+            mode_config = config["modes"][current_mode]
+
+            return {
+                "client_ip": mode_config["client_ip"],
+                "client_os": mode_config["client_os"],
+                "client_type": mode_config["client_os"],
+            }
+        except Exception as e:
+            logger.warning(f"Could not load shared config: {e}, using defaults")
+            return {
+                "client_ip": "10.10.1.194",
+                "client_os": "windows",
+                "client_type": "windows",
+            }
 
     def _copy_to_shared_and_trigger(self, image_path: Path):
         """Simple copy to shared folder and trigger client"""
@@ -118,7 +146,8 @@ class ImageViewerService:
                     from datetime import datetime
 
                     api_response = requests.put(
-                        f"http://localhost:8000/api/v1/detect/status/{detection_id}?status=saved",
+                        f"http://localhost:8000/api/v1/detect/status/{detection_id}",
+                        params={"status": "saved"},
                         json={
                             "client_notified_at": datetime.now().isoformat(),
                             "completed_at": datetime.now().isoformat(),

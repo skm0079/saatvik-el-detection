@@ -74,7 +74,7 @@ async def detect_defect(
         record_data = DetectionRecordCreate(
             original_filename=file.filename,
             el_folder_path=el_folder_path or settings.el_folder_path,
-            source_file_path=f"source/{detection_id}_{file.filename}",
+            source_file_path=f"{detection_id}_{file.filename}",
             total_defects=0,
             confidence_threshold=confidence,
             processing_time_ms=0,
@@ -331,51 +331,30 @@ async def get_detection_status(
         raise HTTPException(500, f"Database error: {str(e)}")
 
 
-@router.get("/status/{detection_id}")
-async def get_detection_status(
-    detection_id: str, db: AsyncSession = Depends(get_session)
+@router.put("/status/{detection_id}")
+async def update_detection_status_endpoint(
+    detection_id: str, status: str, db: AsyncSession = Depends(get_session)
 ):
-    """Get detailed status of a specific detection"""
+    """Update detection status via PUT request"""
     try:
         record = await db.get(DetectionRecord, uuid.UUID(detection_id))
         if not record:
             raise HTTPException(404, "Detection record not found")
 
-        return {
-            "detection_id": str(record.id),
-            "status": record.status.value,
-            "original_filename": record.original_filename,
-            "total_defects": record.total_defects,
-            "processing_time_ms": record.processing_time_ms,
-            "confidence_threshold": record.confidence_threshold,
-            "created_at": record.created_at.isoformat(),
-            "processing_started_at": (
-                record.processing_started_at.isoformat()
-                if record.processing_started_at
-                else None
-            ),
-            "ai_completed_at": (
-                record.ai_completed_at.isoformat() if record.ai_completed_at else None
-            ),
-            "results_saved_at": (
-                record.results_saved_at.isoformat() if record.results_saved_at else None
-            ),
-            "client_notified_at": (
-                record.client_notified_at.isoformat()
-                if record.client_notified_at
-                else None
-            ),
-            "completed_at": (
-                record.completed_at.isoformat() if record.completed_at else None
-            ),
-            "file_size_bytes": record.file_size_bytes,
-            "error_message": record.error_message,
-        }
-    except ValueError:
-        raise HTTPException(400, "Invalid detection ID format")
+        # Convert string to enum
+        status_enum = DetectionStatus(status)
+        record.status = status_enum
+
+        if status == "saved":
+            record.completed_at = datetime.now(timezone.utc)
+            record.client_notified_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        return {"status": "success", "detection_id": detection_id}
+
     except Exception as e:
-        logger.error(f"Failed to get detection status: {e}")
-        raise HTTPException(500, f"Database error: {str(e)}")
+        logger.error(f"Failed to update status: {e}")
+        raise HTTPException(500, f"Update failed: {str(e)}")
 
 
 @router.get("/recent")
@@ -383,28 +362,36 @@ async def get_recent_detections(
     limit: int = 10,
     offset: int = 0,
     status: DetectionStatus = None,
+    search: str = None,
     db: AsyncSession = Depends(get_session),
 ):
     """Get recent detection records for frontend"""
     try:
-        # FIXED: Use execute() + scalars() for compatibility
         # Build query
         stmt = select(DetectionRecord).order_by(DetectionRecord.created_at.desc())
 
-        # Add status filter if provided
+        # Add status filter
         if status:
             stmt = stmt.where(DetectionRecord.status == status)
 
-        # Add pagination
-        stmt = stmt.offset(offset).limit(limit)
+        # Add search filter  ← ADD THIS
+        if search:
+            stmt = stmt.where(DetectionRecord.original_filename.ilike(f"%{search}%"))
 
+        # Pagination
+        stmt = stmt.offset(offset).limit(limit)
         result = await db.execute(stmt)
         records = result.scalars().all()
 
-        # Get total count
+        # Get total count with same filters
         count_stmt = select(func.count(DetectionRecord.id))
         if status:
             count_stmt = count_stmt.where(DetectionRecord.status == status)
+        if search:  # ← ADD THIS
+            count_stmt = count_stmt.where(
+                DetectionRecord.original_filename.ilike(f"%{search}%")
+            )
+
         count_result = await db.execute(count_stmt)
         total = count_result.scalar()
 
