@@ -19,8 +19,6 @@ from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 from queue import Queue
 
-# from constants.constants import get_client_ip, get_config
-
 
 class ProcessedImageWatcher(FileSystemEventHandler):
     def __init__(self, image_queue: Queue):
@@ -54,22 +52,13 @@ class ImageViewerService:
         self.image_queue = Queue()
         self.observer = PollingObserver(timeout=3)
 
-    # TODO: Revert 10.10.2.1
-    # def _get_client_info(self) -> dict:
-    #     """Get client information -> Possible Values -> 10.10.2.126 / 10.10.2.1 / 10.10.1.194 """,
-    #     return {
-    #         "client_ip": "10.10.1.194",
-    #         "client_os": "windows",
-    #         "client_type": "windows",
-    #     }
-
     def _get_client_info(self) -> dict:
         """Get client info from shared config"""
         config_file = Path("shared_config.json")
         if not config_file.exists():
             # Fallback to current values if config missing
             return {
-                "client_ip": "10.10.1.194",
+                "client_ip": "10.10.2.1",
                 "client_os": "windows",
                 "client_type": "windows",
             }
@@ -78,18 +67,24 @@ class ImageViewerService:
             with open(config_file, "r") as f:
                 config = json.load(f)
 
+            # 🆕 UPDATED: Get current machine and mode
             current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
+            current_machine = os.getenv(
+                "MACHINE", config.get("current_machine", "Test Machine")
+            )
+
             mode_config = config["modes"][current_mode]
+            machine_config = mode_config["machines"][current_machine]
 
             return {
-                "client_ip": mode_config["client_ip"],
-                "client_os": mode_config["client_os"],
-                "client_type": mode_config["client_os"],
+                "client_ip": machine_config["client_ip"],
+                "client_os": machine_config["client_os"],
+                "client_type": machine_config["client_os"],
             }
         except Exception as e:
             logger.warning(f"Could not load shared config: {e}, using defaults")
             return {
-                "client_ip": "10.10.1.194",
+                "client_ip": "10.10.2.1",
                 "client_os": "windows",
                 "client_type": "windows",
             }
@@ -107,8 +102,30 @@ class ImageViewerService:
                 detection_id = None
                 logger.warning(f"Could not extract detection_id from {image_path.name}")
 
+            # 🆕 UPDATED: Use machine-specific SMB processed path
+            config_file = Path("shared_config.json")
+            if config_file.exists():
+                try:
+                    with open(config_file, "r") as f:
+                        config = json.load(f)
+
+                    current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
+                    current_machine = os.getenv(
+                        "MACHINE", config.get("current_machine", "Test Machine")
+                    )
+
+                    machine_config = config["modes"][current_mode]["machines"][
+                        current_machine
+                    ]
+                    shared_dir = Path(machine_config["smb_processed_path"])
+
+                except Exception as e:
+                    logger.warning(f"Could not load machine config: {e}, using default")
+                    shared_dir = Path("/mnt/shared/processed")
+            else:
+                shared_dir = Path("/mnt/shared/processed")
+
             # Create shared processed folder
-            shared_dir = Path("/mnt/shared/processed")
             shared_dir.mkdir(parents=True, exist_ok=True)
 
             # Simple copy to shared folder
@@ -145,8 +162,20 @@ class ImageViewerService:
                     import requests
                     from datetime import datetime
 
+                    # 🆕 UPDATED: Get API endpoint from config
+                    config_file = Path("shared_config.json")
+                    if config_file.exists():
+                        with open(config_file, "r") as f:
+                            config = json.load(f)
+                        current_mode = os.getenv(
+                            "MODE", config.get("current_mode", "dev")
+                        )
+                        api_base = config["modes"][current_mode]["api_base"]
+                    else:
+                        api_base = "http://localhost:8000"
+
                     api_response = requests.put(
-                        f"http://localhost:8000/api/v1/detect/status/{detection_id}",
+                        f"{api_base}/api/v1/detect/status/{detection_id}",
                         params={"status": "saved"},
                         json={
                             "client_notified_at": datetime.now().isoformat(),
@@ -292,6 +321,21 @@ async def main():
     logger.info("🚀 Saatvik Processed Image Watcher Starting...")
     logger.info(f"📁 Processed Directory: {PROCESSED_DIR}")
     logger.info(f"🖥️ Operating System: {platform.system()}")
+
+    # 🆕 UPDATED: Show current machine context
+    try:
+        config_file = Path("shared_config.json")
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                config = json.load(f)
+            current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
+            current_machine = os.getenv(
+                "MACHINE", config.get("current_machine", "Test Machine")
+            )
+            logger.info(f"🏭 Environment: {current_mode}")
+            logger.info(f"🤖 Machine: {current_machine}")
+    except Exception as e:
+        logger.warning(f"Could not load machine context: {e}")
 
     # Verify directory exists
     processed_path = Path(PROCESSED_DIR)

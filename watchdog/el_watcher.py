@@ -320,19 +320,26 @@ class ELWatchdogService:
 async def main():
     """Main entry point"""
 
-    # Load current mode config
+    # 🆕 UPDATED: Load new config structure
     config = load_config()
 
-    WATCH_PATH = config["smb_watch_path"]  # "/mnt/shared/raw_el_images"
-    API_ENDPOINT = config["api_endpoint"]  # "http://localhost:8000/api/v1/detect"
-    EXCLUDED_FOLDERS = set(config["excluded_folders"])  # {"NG", "OK", "processed"}
+    # Get current machine config
+    current_machine = os.getenv(
+        "MACHINE", config.get("current_machine", "Test Machine")
+    )
+    current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
 
-    # TODO: Revert : Configuration ->
-    # WATCH_PATH = "/mnt/shared/raw_el_images"  # Your SMB mount path
-    # API_ENDPOINT = "http://localhost:8000/api/v1/detect"  # Local FastAPI
-    # EXCLUDED_FOLDERS = {"NG", "OK", "processed"}  # Level 1 folders to ignore
+    mode_config = config["modes"][current_mode]
+    machine_config = mode_config["machines"][current_machine]
+
+    # Use machine-specific paths
+    WATCH_PATH = machine_config["smb_watch_path"]
+    API_ENDPOINT = mode_config["api_endpoint"]
+    EXCLUDED_FOLDERS = set(mode_config["excluded_folders"])
 
     logger.info("🚀 Saatvik EL Image Watcher Starting...")
+    logger.info(f"🏭 Environment: {current_mode}")
+    logger.info(f"🤖 Machine: {current_machine}")
     logger.info(f"📁 Watch Path: {WATCH_PATH}")
     logger.info(f"🌐 API Endpoint: {API_ENDPOINT}")
 
@@ -377,11 +384,7 @@ def load_config():
     with open(config_file, "r") as f:
         config = json.load(f)
 
-    current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
-    if current_mode not in config["modes"]:
-        raise RuntimeError(f"❌ Mode '{current_mode}' not found in config")
-
-    return config["modes"][current_mode]
+    return config
 
 
 if __name__ == "__main__":

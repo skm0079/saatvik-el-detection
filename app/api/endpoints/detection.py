@@ -1,12 +1,11 @@
 # File: app/api/endpoints/detection.py
-
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 from app.services.yolo_service import YOLOService, get_yolo_service
 from datetime import datetime, timezone
 from app.core.database import get_session
-from app.core.config import settings
+from app.core.config import settings, get_all_machines_in_current_mode
 from app.models.detection_record import (
     DetectionRecord,
     DetectionRecordCreate,
@@ -19,6 +18,7 @@ import shutil
 from loguru import logger
 import traceback
 from sqlalchemy import text
+from typing import Optional
 
 router = APIRouter(prefix="/detect", tags=["detection"])
 
@@ -32,7 +32,7 @@ async def detect_defect(
     yolo_service: YOLOService = Depends(get_yolo_service),
 ):
     """
-    Main detection endpoint with status tracking
+    Main detection endpoint with status tracking and machine context
     Status flow: RECEIVED → PROCESSING → AI_COMPLETE → RESULTS_SAVED → COMPLETED
     """
 
@@ -59,6 +59,7 @@ async def detect_defect(
 
     try:
         logger.info(f"🔍 Starting detection for {file.filename} (ID: {detection_id})")
+        logger.info(f"🤖 Machine: {settings.machine_name} ({settings.machine_id})")
 
         # Save uploaded file to source directory
         source_path = settings.source_dir / f"{detection_id}_{file.filename}"
@@ -70,11 +71,13 @@ async def detect_defect(
         file_stats = source_path.stat()
         logger.info(f"📁 File saved: {source_path} ({file_stats.st_size} bytes)")
 
-        # Create initial database record with RECEIVED status
+        # Create initial database record with RECEIVED status + MACHINE CONTEXT
         record_data = DetectionRecordCreate(
             original_filename=file.filename,
             el_folder_path=el_folder_path or settings.el_folder_path,
             source_file_path=f"{detection_id}_{file.filename}",
+            machine_id=settings.machine_id,  # 🆕 NEW: Machine context
+            machine_name=settings.machine_name,  # 🆕 NEW: Machine context
             total_defects=0,
             confidence_threshold=confidence,
             processing_time_ms=0,
@@ -93,6 +96,7 @@ async def detect_defect(
         await db.commit()
         await db.refresh(record)
         logger.info(f"📝 Database record created with RECEIVED status: {detection_id}")
+        logger.info(f"🏭 Record assigned to machine: {settings.machine_name}")
 
         # Update status to PROCESSING
         await update_detection_status(
@@ -205,6 +209,8 @@ async def detect_defect(
             "processing_time_ms": total_processing_time,
             "total_defects": detection_result["total_defects"],
             "confidence_threshold": confidence,
+            "machine_id": settings.machine_id,  # 🆕 NEW: Include machine context
+            "machine_name": settings.machine_name,  # 🆕 NEW: Include machine context
             "results": {
                 "annotated_image_path": result_paths["annotated_image_path"],
                 "json_results_path": result_paths["json_results_path"],
@@ -295,6 +301,8 @@ async def get_detection_status(
             "detection_id": str(record.id),
             "status": record.status.value,
             "original_filename": record.original_filename,
+            "machine_id": record.machine_id,  # 🆕 NEW: Include machine info
+            "machine_name": record.machine_name,  # 🆕 NEW: Include machine info
             "total_defects": record.total_defects,
             "processing_time_ms": record.processing_time_ms,
             "confidence_threshold": record.confidence_threshold,
@@ -363,18 +371,38 @@ async def get_recent_detections(
     offset: int = 0,
     status: DetectionStatus = None,
     search: str = None,
+    machine_id: Optional[str] = Query(None),  # 🆕 NEW: Machine filter
     db: AsyncSession = Depends(get_session),
 ):
-    """Get recent detection records for frontend"""
+    """
+    Get recent detection records with machine filtering
+
+    By default, shows only current machine's records.
+    Use machine_id="all" to see all machines in current environment.
+    """
     try:
         # Build query
         stmt = select(DetectionRecord).order_by(DetectionRecord.created_at.desc())
+
+        # 🆕 MACHINE FILTERING LOGIC
+        if machine_id is None:
+            # Default: Show only current machine
+            stmt = stmt.where(DetectionRecord.machine_id == settings.machine_id)
+            logger.info(f"🔍 Filtering by current machine: {settings.machine_id}")
+        elif machine_id == "all":
+            # Special case: Show all machines in current environment
+            logger.info("🔍 Showing all machines in current environment")
+            # No additional filter - shows all machines
+        else:
+            # Specific machine requested
+            stmt = stmt.where(DetectionRecord.machine_id == machine_id)
+            logger.info(f"🔍 Filtering by specific machine: {machine_id}")
 
         # Add status filter
         if status:
             stmt = stmt.where(DetectionRecord.status == status)
 
-        # Add search filter  ← ADD THIS
+        # Add search filter
         if search:
             stmt = stmt.where(DetectionRecord.original_filename.ilike(f"%{search}%"))
 
@@ -385,9 +413,18 @@ async def get_recent_detections(
 
         # Get total count with same filters
         count_stmt = select(func.count(DetectionRecord.id))
+
+        # Apply same machine filtering to count
+        if machine_id is None:
+            count_stmt = count_stmt.where(
+                DetectionRecord.machine_id == settings.machine_id
+            )
+        elif machine_id != "all":
+            count_stmt = count_stmt.where(DetectionRecord.machine_id == machine_id)
+
         if status:
             count_stmt = count_stmt.where(DetectionRecord.status == status)
-        if search:  # ← ADD THIS
+        if search:
             count_stmt = count_stmt.where(
                 DetectionRecord.original_filename.ilike(f"%{search}%")
             )
@@ -399,10 +436,14 @@ async def get_recent_detections(
             "total": total,
             "limit": limit,
             "offset": offset,
+            "machine_filter": machine_id
+            or settings.machine_id,  # 🆕 NEW: Show active filter
             "detections": [
                 {
                     "detection_id": str(record.id),
                     "original_filename": record.original_filename,
+                    "machine_id": record.machine_id,  # 🆕 NEW: Include machine info
+                    "machine_name": record.machine_name,  # 🆕 NEW: Include machine info
                     "total_defects": record.total_defects,
                     "status": record.status.value,
                     "created_at": record.created_at.isoformat(),
@@ -421,6 +462,25 @@ async def get_recent_detections(
         raise HTTPException(500, f"Database error: {str(e)}")
 
 
+# 🆕 NEW ENDPOINT: Get available machines
+@router.get("/machines")
+async def get_available_machines():
+    """Get list of all machines available in current environment"""
+    try:
+        machines = get_all_machines_in_current_mode()
+        return {
+            "current_machine": settings.machine_id,
+            "current_mode": settings.current_mode,
+            "available_machines": machines,
+            "machine_names": {
+                machine: machine for machine in machines
+            },  # Same as ID for now
+        }
+    except Exception as e:
+        logger.error(f"Failed to get machines: {e}")
+        raise HTTPException(500, f"Failed to get machines: {str(e)}")
+
+
 @router.get("/test-db")
 async def test_database(db: AsyncSession = Depends(get_session)):
     """Test database connection and operations"""
@@ -437,10 +497,19 @@ async def test_database(db: AsyncSession = Depends(get_session)):
         count = count_result.scalar()
         logger.info(f"✅ Table exists with {count} records")
 
+        # Test machine filtering
+        machine_count_stmt = select(func.count(DetectionRecord.id)).where(
+            DetectionRecord.machine_id == settings.machine_id
+        )
+        machine_count_result = await db.execute(machine_count_stmt)
+        machine_count = machine_count_result.scalar()
+
         return {
             "status": "success",
-            "message": f"Database operational with {count} records",
-            "record_count": count,
+            "message": f"Database operational with {count} total records",
+            "total_records": count,
+            "current_machine": settings.machine_id,
+            "current_machine_records": machine_count,
         }
 
     except Exception as e:

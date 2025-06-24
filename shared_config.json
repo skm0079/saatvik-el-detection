@@ -1,59 +1,90 @@
 {
     "current_mode": "dev",
+    "current_machine": "Test Machine",
     "modes": {
         "dev": {
-            "machine_id": "dev",
-            "machine_name": "Factory-Line-Dev",
-            "smb_source_path": "/mnt/shared",
-            "smb_watch_path": "/mnt/shared/raw_el_images",
-            "smb_processed_path": "/mnt/shared/processed",
+            "database_name": "saatvik_el_db_dev",
             "api_base": "http://localhost:8000",
             "api_endpoint": "http://localhost:8000/api/v1/detect",
-            "client_ip": "10.10.2.194",
-            "client_os": "windows",
             "confidence_threshold": 0.2,
             "excluded_folders": [
                 "NG",
                 "OK",
                 "processed"
             ],
-            "database_name": "saatvik_el_db"
+            "machines": {
+                "Test Machine": {
+                    "machine_id": "IT Office Machine",
+                    "machine_name": "IT Office Machine",
+                    "smb_source_path": "/mnt/shared",
+                    "smb_watch_path": "/mnt/shared/raw_el_images",
+                    "smb_processed_path": "/mnt/shared/processed",
+                    "client_ip": "10.10.2.1",
+                    "client_os": "windows"
+                }
+            }
         },
         "staging": {
-            "machine_id": "staging",
-            "machine_name": "Factory-Line-Staging",
-            "smb_source_path": "/mnt/shared2/staging",
-            "smb_watch_path": "/mnt/shared2/staging/raw_el_images",
-            "smb_processed_path": "/mnt/shared2/staging/processed",
+            "database_name": "saatvik_el_db_staging",
             "api_base": "http://localhost:8001",
             "api_endpoint": "http://localhost:8001/api/v1/detect",
-            "client_ip": "10.10.2.1",
-            "client_os": "windows",
             "confidence_threshold": 0.3,
             "excluded_folders": [
                 "NG",
                 "OK",
                 "processed"
             ],
-            "database_name": "saatvik_el_db_staging"
+            "machines": {
+                "Pre EL Machine 1": {
+                    "machine_id": "Pre EL Machine 1",
+                    "machine_name": "Pre EL Machine 1",
+                    "smb_source_path": "/mnt/shared/staging",
+                    "smb_watch_path": "/mnt/shared/staging/raw_el_images",
+                    "smb_processed_path": "/mnt/shared/staging/processed",
+                    "client_ip": "10.10.2.1",
+                    "client_os": "windows"
+                },
+                "Pre EL Machine 2": {
+                    "machine_id": "Pre EL Machine 2",
+                    "machine_name": "Pre EL Machine 2",
+                    "smb_source_path": "/mnt/shared2/staging",
+                    "smb_watch_path": "/mnt/shared2/staging/raw_el_images",
+                    "smb_processed_path": "/mnt/shared2/staging/processed",
+                    "client_ip": "10.10.2.2",
+                    "client_os": "windows"
+                }
+            }
         },
         "prod": {
-            "machine_id": "prod",
-            "machine_name": "Factory-Line-Production",
-            "smb_source_path": "/mnt/shared3/prod",
-            "smb_watch_path": "/mnt/shared3/prod/raw_el_images",
-            "smb_processed_path": "/mnt/shared3/prod/processed",
+            "database_name": "saatvik_el_db_prod",
             "api_base": "http://localhost:8002",
             "api_endpoint": "http://localhost:8002/api/v1/detect",
-            "client_ip": "10.10.2.1",
-            "client_os": "windows",
             "confidence_threshold": 0.5,
             "excluded_folders": [
                 "NG",
                 "OK",
                 "processed"
             ],
-            "database_name": "saatvik_el_db_prod"
+            "machines": {
+                "Pre EL Machine 1": {
+                    "machine_id": "Pre EL Machine 1",
+                    "machine_name": "Pre EL Machine 1",
+                    "smb_source_path": "/mnt/shared/prod",
+                    "smb_watch_path": "/mnt/shared/prod/raw_el_images",
+                    "smb_processed_path": "/mnt/shared/prod/processed",
+                    "client_ip": "10.10.2.1",
+                    "client_os": "windows"
+                },
+                "Pre EL Machine 2": {
+                    "machine_id": "Pre EL Machine 2",
+                    "machine_name": "Pre EL Machine 2",
+                    "smb_source_path": "/mnt/shared2/prod",
+                    "smb_watch_path": "/mnt/shared2/prod/raw_el_images",
+                    "smb_processed_path": "/mnt/shared2/prod/processed",
+                    "client_ip": "10.10.2.3",
+                    "client_os": "windows"
+                }
+            }
         }
     }
 }
