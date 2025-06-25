@@ -26,7 +26,7 @@
                     "machine_id": "Factory Line 2",
                     "machine_name": "Factory Line 2",
                     "smb_source_path": "/mnt/shared2",
-                    "smb_watch_path": "/mnt/shared2/2025-06-24/Night Shift",
+                    "smb_watch_path": "/mnt/shared2/2025-06-25/Morning Shift",
                     "smb_processed_path": "/mnt/shared1/processed",
                     "client_ip": "10.10.1.194",
                     "client_os": "windows"
