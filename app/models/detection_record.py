@@ -27,9 +27,14 @@ class DetectionRecordBase(SQLModel):
     el_folder_path: str
     source_file_path: str
 
-    # 🆕 MACHINE CONTEXT - NEW FIELDS
-    machine_id: str = Field(index=True)  # "Test Machine", "Pre EL Machine 1", etc.
-    machine_name: str  # Same as machine_id for now
+    # Machine context
+    machine_id: str = Field(index=True)
+    machine_name: str
+
+    # Historical path storage (paths when detection was created)
+    source_path_at_creation: Optional[str] = Field(default=None)
+    watch_path_at_creation: Optional[str] = Field(default=None)
+    processed_path_at_creation: Optional[str] = Field(default=None)
 
     # Processing results
     total_defects: int = 0
@@ -98,8 +103,13 @@ class DetectionRecordCreate(SQLModel):
     original_filename: str
     el_folder_path: str
     source_file_path: str
-    machine_id: str  # 🆕 NEW FIELD
-    machine_name: str  # 🆕 NEW FIELD
+    machine_id: str
+    machine_name: str
+
+    source_path_at_creation: Optional[str] = None
+    watch_path_at_creation: Optional[str] = None
+    processed_path_at_creation: Optional[str] = None
+
     total_defects: int = 0
     confidence_threshold: float
     processing_time_ms: int
@@ -119,6 +129,11 @@ class DetectionRecordRead(DetectionRecordBase):
     results_saved_at: Optional[datetime] = None
     client_notified_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+    # Historical paths included in read response
+    source_path_at_creation: Optional[str] = None
+    watch_path_at_creation: Optional[str] = None
+    processed_path_at_creation: Optional[str] = None
 
 
 class DetectionRecordUpdate(SQLModel):

@@ -1,11 +1,17 @@
 # File: app/api/endpoints/detection.py
+from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 from app.services.yolo_service import YOLOService, get_yolo_service
 from datetime import datetime, timezone
 from app.core.database import get_session
-from app.core.config import settings, get_all_machines_in_current_mode
+from app.core.config import (
+    get_current_machine_config,
+    settings,
+    get_all_machines_in_current_mode,
+)
 from app.models.detection_record import (
     DetectionRecord,
     DetectionRecordCreate,
@@ -19,6 +25,7 @@ from loguru import logger
 import traceback
 from sqlalchemy import text
 from typing import Optional
+import pandas as pd
 
 router = APIRouter(prefix="/detect", tags=["detection"])
 
@@ -67,17 +74,22 @@ async def detect_defect(
         with open(source_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        current_machine_config = get_current_machine_config()
         # Get file info
         file_stats = source_path.stat()
         logger.info(f"📁 File saved: {source_path} ({file_stats.st_size} bytes)")
 
-        # Create initial database record with RECEIVED status + MACHINE CONTEXT
+        # Create initial database record with RECEIVED status + MACHINE CONTEXT + PATHS
         record_data = DetectionRecordCreate(
             original_filename=file.filename,
             el_folder_path=el_folder_path or settings.el_folder_path,
             source_file_path=f"{detection_id}_{file.filename}",
-            machine_id=settings.machine_id,  # 🆕 NEW: Machine context
-            machine_name=settings.machine_name,  # 🆕 NEW: Machine context
+            machine_id=settings.machine_id,
+            machine_name=settings.machine_name,
+            # NEW: Store paths at creation time (for historical accuracy)
+            source_path_at_creation=current_machine_config["smb_source_path"],
+            watch_path_at_creation=current_machine_config["smb_watch_path"],
+            processed_path_at_creation=current_machine_config["smb_processed_path"],
             total_defects=0,
             confidence_threshold=confidence,
             processing_time_ms=0,
@@ -97,7 +109,7 @@ async def detect_defect(
         await db.refresh(record)
         logger.info(f"📝 Database record created with RECEIVED status: {detection_id}")
         logger.info(f"🏭 Record assigned to machine: {settings.machine_name}")
-
+        logger.info(f"📁 Paths stored: {current_machine_config['smb_watch_path']}")
         # Update status to PROCESSING
         await update_detection_status(
             db,
@@ -209,8 +221,14 @@ async def detect_defect(
             "processing_time_ms": total_processing_time,
             "total_defects": detection_result["total_defects"],
             "confidence_threshold": confidence,
-            "machine_id": settings.machine_id,  # 🆕 NEW: Include machine context
-            "machine_name": settings.machine_name,  # 🆕 NEW: Include machine context
+            "machine_id": settings.machine_id,
+            "machine_name": settings.machine_name,
+            # Include stored paths in response
+            "paths_at_creation": {
+                "source": current_machine_config["smb_source_path"],
+                "watch": current_machine_config["smb_watch_path"],
+                "processed": current_machine_config["smb_processed_path"],
+            },
             "results": {
                 "annotated_image_path": result_paths["annotated_image_path"],
                 "json_results_path": result_paths["json_results_path"],
@@ -291,7 +309,7 @@ async def update_detection_status(
 async def get_detection_status(
     detection_id: str, db: AsyncSession = Depends(get_session)
 ):
-    """Get detailed status of a specific detection"""
+    """ENHANCED: Get detailed status + historical paths for specific detection"""
     try:
         record = await db.get(DetectionRecord, uuid.UUID(detection_id))
         if not record:
@@ -301,8 +319,8 @@ async def get_detection_status(
             "detection_id": str(record.id),
             "status": record.status.value,
             "original_filename": record.original_filename,
-            "machine_id": record.machine_id,  # 🆕 NEW: Include machine info
-            "machine_name": record.machine_name,  # 🆕 NEW: Include machine info
+            "machine_id": record.machine_id,
+            "machine_name": record.machine_name,
             "total_defects": record.total_defects,
             "processing_time_ms": record.processing_time_ms,
             "confidence_threshold": record.confidence_threshold,
@@ -331,6 +349,17 @@ async def get_detection_status(
             "annotated_image_path": record.annotated_image_path,
             "thumbnail_path": record.thumbnail_path,
             "el_folder_path": record.el_folder_path,
+            # Historical paths (when this detection was created)
+            "paths_at_creation": (
+                {
+                    "source": record.source_path_at_creation,
+                    "watch": record.watch_path_at_creation,
+                    "processed": record.processed_path_at_creation,
+                    "context": "historical_at_creation",
+                }
+                if record.source_path_at_creation
+                else None
+            ),
         }
     except ValueError:
         raise HTTPException(400, "Invalid detection ID format")
@@ -371,50 +400,190 @@ async def get_recent_detections(
     offset: int = 0,
     status: DetectionStatus = None,
     search: str = None,
-    machine_id: Optional[str] = Query(None),  # 🆕 NEW: Machine filter
+    machine_id: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    format: str = Query("json", description="Response format: json or xlsx"),
     db: AsyncSession = Depends(get_session),
 ):
     """
-    Get recent detection records with machine filtering
-
-    By default, shows only current machine's records.
-    Use machine_id="all" to see all machines in current environment.
+    ENHANCED: Get recent detection records with smart path handling + XLSX export
+    - Returns historical paths (when detection was created) for data integrity
+    - Also includes current paths for operational context
+    - Supports XLSX export with clean data format
     """
     try:
         # Build query
         stmt = select(DetectionRecord).order_by(DetectionRecord.created_at.desc())
 
-        # 🆕 MACHINE FILTERING LOGIC
+        # Machine filtering logic
         if machine_id is None:
-            # Default: Show only current machine
             stmt = stmt.where(DetectionRecord.machine_id == settings.machine_id)
             logger.info(f"🔍 Filtering by current machine: {settings.machine_id}")
         elif machine_id == "all":
-            # Special case: Show all machines in current environment
             logger.info("🔍 Showing all machines in current environment")
-            # No additional filter - shows all machines
         else:
-            # Specific machine requested
             stmt = stmt.where(DetectionRecord.machine_id == machine_id)
             logger.info(f"🔍 Filtering by specific machine: {machine_id}")
 
-        # Add status filter
+        # Status filter
         if status:
             stmt = stmt.where(DetectionRecord.status == status)
 
-        # Add search filter
+        # Search filter
         if search:
             stmt = stmt.where(DetectionRecord.original_filename.ilike(f"%{search}%"))
 
-        # Pagination
-        stmt = stmt.offset(offset).limit(limit)
-        result = await db.execute(stmt)
-        records = result.scalars().all()
+        # Date filtering
+        if date_from:
+            try:
+                from_datetime = datetime.fromisoformat(date_from.replace("Z", "+00:00"))
+                stmt = stmt.where(DetectionRecord.created_at >= from_datetime)
+                logger.info(f"📅 Filtering from: {from_datetime}")
+            except ValueError as e:
+                logger.warning(f"Invalid date_from format: {date_from}, error: {e}")
 
+        if date_to:
+            try:
+                to_datetime = datetime.fromisoformat(date_to.replace("Z", "+00:00"))
+                stmt = stmt.where(DetectionRecord.created_at <= to_datetime)
+                logger.info(f"📅 Filtering to: {to_datetime}")
+            except ValueError as e:
+                logger.warning(f"Invalid date_to format: {date_to}, error: {e}")
+
+        # Execute query
+        if format.lower() == "xlsx":
+            # For XLSX, get more records (ignore pagination for export)
+            export_stmt = stmt.limit(10000)  # Reasonable limit for Excel
+            result = await db.execute(export_stmt)
+            records = result.scalars().all()
+        else:
+            # Regular JSON pagination
+            stmt = stmt.offset(offset).limit(limit)
+            result = await db.execute(stmt)
+            records = result.scalars().all()
+
+        # Get current machine paths for operational context
+        try:
+            current_machine_config = get_current_machine_config()
+            current_paths = {
+                "source": current_machine_config["smb_source_path"],
+                "watch": current_machine_config["smb_watch_path"],
+                "processed": current_machine_config["smb_processed_path"],
+            }
+        except Exception as e:
+            logger.warning(f"Could not get current machine paths: {e}")
+            current_paths = None
+
+        # XLSX Export Logic
+        if format.lower() == "xlsx":
+            logger.info(f"📊 Generating XLSX export for {len(records)} records")
+
+            # Clean data format - NO BOUNDING BOX JARGON
+            export_data = []
+            for record in records:
+                # Parse defect details cleanly
+                defect_summary = "No defects found"
+                if record.detection_details and record.detection_details.get("defects"):
+                    defects = record.detection_details["defects"]
+                    defect_types = {}
+
+                    # Group defects by type and collect confidences
+                    for defect in defects:
+                        class_name = defect.get("class_name", "Unknown")
+                        confidence = defect.get("confidence", 0)
+                        if class_name in defect_types:
+                            defect_types[class_name].append(confidence)
+                        else:
+                            defect_types[class_name] = [confidence]
+
+                    # Format as readable text
+                    defect_parts = []
+                    for defect_type, confidences in defect_types.items():
+                        avg_confidence = sum(confidences) / len(confidences)
+                        count = len(confidences)
+                        defect_parts.append(
+                            f"{defect_type} ({count}x, avg {avg_confidence:.1%})"
+                        )
+
+                    defect_summary = "; ".join(defect_parts)
+
+                export_data.append(
+                    {
+                        "Machine ID": record.machine_id,
+                        "Machine Name": record.machine_name,
+                        "Filename": record.original_filename,
+                        "Total Defects": record.total_defects,
+                        "Confidence Threshold": f"{record.confidence_threshold:.1%}",
+                        "Processing Time (ms)": record.processing_time_ms,
+                        "Defect Details": defect_summary,
+                        "Status": record.status.value.upper(),
+                        "Processed At": (
+                            record.completed_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                            if record.completed_at
+                            else "Not completed"
+                        ),
+                        "Created At": record.created_at.strftime(
+                            "%Y-%m-%d %H:%M:%S UTC"
+                        ),
+                        "Folder Path": record.el_folder_path,
+                        # Historical paths (when detection was created)
+                        "Source Path (At Creation)": record.source_path_at_creation
+                        or "Not recorded",
+                        "Watch Path (At Creation)": record.watch_path_at_creation
+                        or "Not recorded",
+                        "Processed Path (At Creation)": record.processed_path_at_creation
+                        or "Not recorded",
+                    }
+                )
+
+            # Create Excel file
+            df = pd.DataFrame(export_data)
+
+            # Generate filename with filters
+            filename = f"saatvik_detections_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            if machine_id and machine_id != "all":
+                filename += f"_{machine_id.replace(' ', '_')}"
+            if date_from:
+                filename += f"_from_{date_from[:10]}"
+            if date_to:
+                filename += f"_to_{date_to[:10]}"
+            filename += ".xlsx"
+
+            # Create Excel buffer
+            buffer = BytesIO()
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Detections")
+
+                # Auto-adjust column widths
+                worksheet = writer.sheets["Detections"]
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+
+            buffer.seek(0)
+
+            logger.success(f"📊 XLSX export ready: {filename}")
+
+            return StreamingResponse(
+                BytesIO(buffer.read()),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={filename}"},
+            )
+
+        # Regular JSON Response
         # Get total count with same filters
         count_stmt = select(func.count(DetectionRecord.id))
 
-        # Apply same machine filtering to count
+        # Apply same filters to count
         if machine_id is None:
             count_stmt = count_stmt.where(
                 DetectionRecord.machine_id == settings.machine_id
@@ -429,6 +598,23 @@ async def get_recent_detections(
                 DetectionRecord.original_filename.ilike(f"%{search}%")
             )
 
+        # Apply date filters to count as well
+        if date_from:
+            try:
+                from_datetime = datetime.fromisoformat(date_from.replace("Z", "+00:00"))
+                count_stmt = count_stmt.where(
+                    DetectionRecord.created_at >= from_datetime
+                )
+            except ValueError:
+                pass
+
+        if date_to:
+            try:
+                to_datetime = datetime.fromisoformat(date_to.replace("Z", "+00:00"))
+                count_stmt = count_stmt.where(DetectionRecord.created_at <= to_datetime)
+            except ValueError:
+                pass
+
         count_result = await db.execute(count_stmt)
         total = count_result.scalar()
 
@@ -436,14 +622,20 @@ async def get_recent_detections(
             "total": total,
             "limit": limit,
             "offset": offset,
-            "machine_filter": machine_id
-            or settings.machine_id,  # 🆕 NEW: Show active filter
+            "machine_filter": machine_id or settings.machine_id,
+            "date_filters": {
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+            # Current operational paths (for live operations)
+            "current_machine_paths": current_paths,
+            "paths_context": "current_operational",
             "detections": [
                 {
                     "detection_id": str(record.id),
                     "original_filename": record.original_filename,
-                    "machine_id": record.machine_id,  # 🆕 NEW: Include machine info
-                    "machine_name": record.machine_name,  # 🆕 NEW: Include machine info
+                    "machine_id": record.machine_id,
+                    "machine_name": record.machine_name,
                     "total_defects": record.total_defects,
                     "status": record.status.value,
                     "created_at": record.created_at.isoformat(),
@@ -453,28 +645,47 @@ async def get_recent_detections(
                     "thumbnail_path": record.thumbnail_path,
                     "el_folder_path": record.el_folder_path,
                     "error_message": record.error_message,
+                    # Historical paths (when this detection was created)
+                    "paths_at_creation": (
+                        {
+                            "source": record.source_path_at_creation,
+                            "watch": record.watch_path_at_creation,
+                            "processed": record.processed_path_at_creation,
+                        }
+                        if record.source_path_at_creation
+                        else None
+                    ),
                 }
                 for record in records
             ],
         }
+
     except Exception as e:
         logger.error(f"Failed to get recent detections: {e}")
         raise HTTPException(500, f"Database error: {str(e)}")
 
 
-# 🆕 NEW ENDPOINT: Get available machines
 @router.get("/machines")
 async def get_available_machines():
-    """Get list of all machines available in current environment"""
+    """ENHANCED: Get machines + CURRENT operational paths (for live operations)"""
     try:
         machines = get_all_machines_in_current_mode()
+        current_machine_config = get_current_machine_config()
+
         return {
             "current_machine": settings.machine_id,
             "current_mode": settings.current_mode,
             "available_machines": machines,
-            "machine_names": {
-                machine: machine for machine in machines
-            },  # Same as ID for now
+            "machine_names": {machine: machine for machine in machines},
+            # CURRENT operational paths (changes with shifts)
+            "current_machine_paths": {
+                "source": current_machine_config["smb_source_path"],
+                "watch": current_machine_config["smb_watch_path"],
+                "processed": current_machine_config["smb_processed_path"],
+            },
+            # Metadata
+            "paths_context": "current_operational",
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:
         logger.error(f"Failed to get machines: {e}")
