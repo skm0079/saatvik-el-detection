@@ -19,7 +19,7 @@
                     "smb_source_path": "/mnt/shared",
                     "smb_watch_path": "/mnt/shared/raw_el_images",
                     "smb_processed_path": "/mnt/shared/processed",
-                    "client_ip": "10.10.2.126",
+                    "client_ip": "10.10.2.1",
                     "client_os": "windows"
                 },
                 "Factory Line 1": {
