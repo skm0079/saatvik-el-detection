@@ -217,7 +217,8 @@ else:
         <html>
             <head><title>Saatvik EL Detection API</title></head>
             <body>
-                <h1>🔍 Saatvik EL Detection API</h1>
+                <img src="/static/logo.png" alt="Logo" style="width: 100px; height: auto;">
+                <h1>aatvik EL Detection API</h1>
                 <p>✅ API is running in <strong>{settings.current_mode}</strong> mode</p>
                 
                 <h3>📊 System Status:</h3>

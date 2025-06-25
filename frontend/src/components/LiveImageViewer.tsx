@@ -377,8 +377,8 @@ export function LiveImageViewer() {
                     {imageError && (
                         <div className="absolute inset-0 flex items-center justify-center">
                             <div className="text-center p-4">
-                                <div className="text-4xl md:text-6xl mb-4">❌</div>
-                                <p className={`text-lg md:text-xl mb-2 ${isFullscreen ? 'text-white' : 'text-slate-700'}`}>Failed to load image</p>
+                                <div className="text-4xl md:text-6xl mb-4">⏳</div>
+                                <p className={`text-lg md:text-xl mb-2 ${isFullscreen ? 'text-white' : 'text-slate-700'}`}>Waiting to load image</p>
                                 <p className={`text-sm mb-4 ${isFullscreen ? 'text-slate-300' : 'text-slate-500'}`}>Image might not be available yet</p>
                                 <button
                                     onClick={handleSync}

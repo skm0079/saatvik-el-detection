@@ -175,7 +175,7 @@ class ELWatchdogService:
             logger.info(f"📁 File path object created: {file_path}")
 
             # Wait for file to be fully written (important for network mounts)
-            logger.info(f"⏳ Waiting 2seconds for file to be fully written...")
+            logger.info(f"⏳ Waiting 2 seconds for file to be fully written...")
             await asyncio.sleep(2)
             logger.info(f"✅ Wait complete, checking file existence...")
 
