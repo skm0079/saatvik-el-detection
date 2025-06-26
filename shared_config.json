@@ -17,7 +17,7 @@
                     "machine_id": "IT Office Machine",
                     "machine_name": "IT Office Machine",
                     "smb_source_path": "/mnt/shared",
-                    "smb_watch_path": "/mnt/shared/raw_el_images",
+                    "smb_watch_path": "/mnt/shared/2025-06-26/Morning Shift",
                     "smb_processed_path": "/mnt/shared/processed",
                     "client_ip": "10.10.2.1",
                     "client_os": "windows"
@@ -29,6 +29,15 @@
                     "smb_watch_path": "/mnt/shared2/2025-06-26/Morning Shift",
                     "smb_processed_path": "/mnt/shared1/processed",
                     "client_ip": "10.10.1.194",
+                    "client_os": "windows"
+                },
+                "Factory Line 1": {
+                    "machine_id": "Factory Line 1",
+                    "machine_name": "Factory Line 1",
+                    "smb_source_path": "/mnt/shared3",
+                    "smb_watch_path": "/mnt/shared3/2025-06-26/X",
+                    "smb_processed_path": "/mnt/shared1/processed",
+                    "client_ip": "10.10.1.193",
                     "client_os": "windows"
                 }
             }

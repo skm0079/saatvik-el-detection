@@ -200,3 +200,57 @@ MACHINE="Factory Line 2" uv run watchdog/el_watcher.py
 
 # Terminal 4: Processed Images Watcher
 uv run watchdog/processed_watcher.py
+
+
+
+-----------
+
+# Set nano as permanent default editor for root
+sudo bash -c 'echo "export EDITOR=nano" >> /root/.bashrc'
+sudo bash -c 'echo "export VISUAL=nano" >> /root/.bashrc'
+
+# Set for current user too
+echo "export EDITOR=nano" >> ~/.bashrc
+echo "export VISUAL=nano" >> ~/.bashrc
+
+# Apply immediately
+export EDITOR=nano
+export VISUAL=nano
+
+# Test cron editing now
+crontab -e
+
+# 1. Fix crontab editor permanently
+sudo bash -c 'echo "export EDITOR=nano" >> /root/.bashrc'
+echo "export EDITOR=nano" >> ~/.bashrc
+export EDITOR=nano
+
+# 2. Go to project directory
+cd /home/administrator/Documents/defect_detection/saatvik-el-detection
+
+# 3. Create setup script
+nano setup_config_json.py
+# Copy content from first artifact above
+
+# 4. Create auto-updater script
+nano auto_updater.py
+# Copy content from second artifact above
+
+# 5. Make executable and fix permissions
+chmod +x *.py
+sudo chown -R administrator:administrator .
+sudo chmod +x Makefile
+
+# 6. Generate initial configuration
+python3 setup_config_json.py
+
+# 7. Test auto-updater
+python3 auto_updater.py
+
+# 8. Set up cron job
+crontab -e
+# Add this line:
+*/10 * * * * cd /home/administrator/Documents/defect_detection/saatvik-el-detection && python3 auto_updater.py >> cron.log 2>&1
+
+# 9. Verify cron job
+crontab -l
