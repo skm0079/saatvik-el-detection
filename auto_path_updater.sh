@@ -1,21 +1,29 @@
 #!/bin/bash
 
+# Fine: auto_path_updater.sh
+# This script automatically updates the SMB watch path in the shared configuration file in the same folder as the script.
+
 # ==============================================================================
-# TSaatvik EL Detection System Path Updater (10-min verification)
+# FIXED VERSION - Saatvik EL Detection System Path Updater
 # ==============================================================================
 
 # Configuration
-CONFIG_FILE="shared_config.json"
+CONFIG_FILE="/home/administrator/Documents/defect_detection/saatvik-el-detection/shared_config.json"
 BACKUP_DIR="./backup"
-LOG_FILE="./shared_config_updater.log"
-LOCK_FILE="/tmp/saatvik_shared_config_updater.lock"
+LOG_FILE="./auto_updater.log"
+LOCK_FILE="/tmp/saatvik_updater.lock"
 
 # Create backup directory if it doesn't exist
 mkdir -p "$BACKUP_DIR"
 
-# Enhanced logging function with more detail
+# Enhanced logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# Silent logging function (only to file, not stdout)
+log_silent() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
 
 log_separator() {
@@ -50,31 +58,34 @@ cleanup() {
 # Set trap for cleanup
 trap cleanup EXIT INT TERM
 
-# Generate new path based on current time
+# Generate new path based on current time - COMPLETELY FIXED VERSION
 generate_new_path() {
     local current_date=$(date '+%Y-%m-%d')
     local current_hour=$(date '+%H')
     local current_minute=$(date '+%M')
     
-    log "Current time: $current_date $current_hour:$current_minute"
+    # Use silent logging to avoid contaminating return value
+    log_silent "Current time: $current_date $current_hour:$current_minute"
     
-    # Determine shift based on time (adjust hours as needed)
+    # Determine shift based on time (7 AM - 7 PM = Morning, 7 PM - 7 AM = Night)
     if [ "$current_hour" -ge 7 ] && [ "$current_hour" -lt 19 ]; then
         shift_name="Morning Shift"
-        log "Time check: Morning Shift (7 AM - 7 PM range)"
+        log_silent "Time check: Morning Shift (7 AM - 7 PM range)"
     else
         shift_name="Night Shift" 
-        log "Time check: Night Shift (7 PM - 7 AM range)"
+        log_silent "Time check: Night Shift (7 PM - 7 AM range)"
     fi
     
     local new_path="/mnt/shared2/$current_date/$shift_name"
-    log "Generated path: $new_path"
+    log_silent "Generated path: $new_path"
+    
+    # Return ONLY the path, no extra output
     echo "$new_path"
 }
 
 # Backup current config
 backup_config() {
-    local backup_name="config_backup_$(date '+%Y%m%d_%H%M%S').txt"
+    local backup_name="config_backup_$(date '+%Y%m%d_%H%M%S').json"
     local backup_path="$BACKUP_DIR/$backup_name"
     
     if cp "$CONFIG_FILE" "$backup_path"; then
@@ -86,14 +97,14 @@ backup_config() {
     fi
 }
 
-# Update config with new path
+# Update config with new path - FIXED VERSION
 update_config() {
     local new_path="$1"
     local temp_file=$(mktemp)
     
     log "Attempting to update config with path: $new_path"
     
-    # Use Python to update JSON (more reliable than sed for JSON)
+    # Use Python to update JSON - FIXED to handle the path properly
     python3 << EOF
 import json
 import sys
@@ -170,7 +181,7 @@ restart_application() {
     
     # Stop the application
     log "Stopping application with 'make down'..."
-    if make down 2>&1 | tee -a "$LOG_FILE"; then
+    if make down >> "$LOG_FILE" 2>&1; then
         log "✅ 'make down' completed"
     else
         log "⚠️ 'make down' may have had issues"
@@ -182,7 +193,7 @@ restart_application() {
     
     # Start the application
     log "Starting application with 'make dev'..."
-    if make dev 2>&1 | tee -a "$LOG_FILE"; then
+    if make dev >> "$LOG_FILE" 2>&1; then
         log "✅ 'make dev' completed"
     else
         log "❌ 'make dev' failed"
@@ -206,7 +217,7 @@ restart_application() {
 # Main function with comprehensive logging
 main() {
     log_separator
-    log "🚀 STARTING TEST RUN - Automated Path Update Check"
+    log "🚀 STARTING Automated Path Update Check"
     log "Current working directory: $(pwd)"
     log "Script PID: $$"
     log "User: $(whoami)"
@@ -270,7 +281,7 @@ main() {
     fi
     
     log_separator
-    log "🏁 TEST RUN COMPLETED - $(date)"
+    log "🏁 SCRIPT COMPLETED - $(date)"
     log_separator
 }
 
