@@ -254,3 +254,5 @@ crontab -e
 
 # 9. Verify cron job
 crontab -l
+
+sudo tail -f /var/log/syslog | grep auto_updater

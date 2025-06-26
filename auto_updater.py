@@ -367,29 +367,97 @@ def restart_all_services():
             logger.error("❌ Failed to start main application")
             return False
 
-    # Step 3: Start watchdog processes
+    # Step 3: Start watchdog processes (without sudo - uv not available in root)
     logger.info("Step 3: Starting watchdog processes...")
 
     # Kill any existing watchdog processes first
     run_command_with_wait("pkill -f el_watcher.py", wait_time=2)
     run_command_with_wait("pkill -f processed_watcher.py", wait_time=2)
 
-    # Start EL watcher
-    el_cmd = "nohup uv run watchdog/el_watcher.py > el_watcher.log 2>&1 &"
+    # Get the actual user (not root) for running uv commands
+    actual_user = os.getenv("SUDO_USER", "administrator")
+    logger.info(f"Running watchdog processes as user: {actual_user}")
+
+    # Start EL watcher as the actual user (not root)
+    el_cmd = f"sudo -u {actual_user} bash -c 'cd {PROJECT_DIR} && nohup uv run watchdog/el_watcher.py > {PROJECT_DIR}/el_watcher.log 2>&1 &'"
     if not run_command_with_wait(el_cmd, wait_time=5):
         logger.error("❌ Failed to start el_watcher.py")
         return False
 
-    # Start processed watcher
-    proc_cmd = (
-        "nohup uv run watchdog/processed_watcher.py > processed_watcher.log 2>&1 &"
-    )
+    # Start processed watcher as the actual user (not root)
+    proc_cmd = f"sudo -u {actual_user} bash -c 'cd {PROJECT_DIR} && nohup uv run watchdog/processed_watcher.py > {PROJECT_DIR}/processed_watcher.log 2>&1 &'"
     if not run_command_with_wait(proc_cmd, wait_time=WATCHDOG_WAIT):
         logger.error("❌ Failed to start processed_watcher.py")
         return False
 
-    # Step 4: Final health check
-    logger.info("Step 4: Final health check...")
+    # Step 4: Verify watchdog processes and final health check
+    logger.info("Step 4: Verifying watchdog processes...")
+
+    # Wait a bit for processes to start
+    time.sleep(10)
+
+    # Check if watchdog processes are running
+    try:
+        el_check = subprocess.run(
+            ["pgrep", "-f", "el_watcher.py"], capture_output=True, text=True
+        )
+        proc_check = subprocess.run(
+            ["pgrep", "-f", "processed_watcher.py"], capture_output=True, text=True
+        )
+
+        if el_check.returncode == 0:
+            logger.info(f"✅ el_watcher.py is running (PID: {el_check.stdout.strip()})")
+        else:
+            logger.warning("⚠️ el_watcher.py process not found")
+
+        if proc_check.returncode == 0:
+            logger.info(
+                f"✅ processed_watcher.py is running (PID: {proc_check.stdout.strip()})"
+            )
+        else:
+            logger.warning("⚠️ processed_watcher.py process not found")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking watchdog processes: {e}")
+
+    # Check watchdog log files for errors
+    try:
+        el_log_path = Path(PROJECT_DIR) / "el_watcher.log"
+        proc_log_path = Path(PROJECT_DIR) / "processed_watcher.log"
+
+        if el_log_path.exists():
+            with open(el_log_path, "r") as f:
+                el_log_content = f.read()
+                if (
+                    "error" in el_log_content.lower()
+                    or "traceback" in el_log_content.lower()
+                ):
+                    logger.warning("⚠️ el_watcher.log contains errors")
+                    logger.info(
+                        f"Recent el_watcher.log content: {el_log_content[-200:]}"
+                    )
+                else:
+                    logger.info("✅ el_watcher.log looks good")
+
+        if proc_log_path.exists():
+            with open(proc_log_path, "r") as f:
+                proc_log_content = f.read()
+                if (
+                    "error" in proc_log_content.lower()
+                    or "traceback" in proc_log_content.lower()
+                ):
+                    logger.warning("⚠️ processed_watcher.log contains errors")
+                    logger.info(
+                        f"Recent processed_watcher.log content: {proc_log_content[-200:]}"
+                    )
+                else:
+                    logger.info("✅ processed_watcher.log looks good")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking watchdog logs: {e}")
+
+    # Final API health check
+    logger.info("Step 5: Final health check...")
 
     # Wait a bit more for everything to stabilize
     logger.info("⏳ Waiting for services to stabilize...")
