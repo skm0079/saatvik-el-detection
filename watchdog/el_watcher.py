@@ -237,7 +237,14 @@ class ELWatchdogService:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 with open(file_path, "rb") as f:
                     files = {"file": (file_path.name, f, "image/jpeg")}
-                    data = {"el_folder_path": el_folder_path, "confidence": 0.5}
+                    # Get current machine name from environment
+                    # Get current machine config
+                    machine_from_env = os.getenv("MACHINE", "Unknown")
+                    data = {
+                        "el_folder_path": el_folder_path,
+                        "confidence": 0.5,
+                        "machine_name": machine_from_env,  # Use environment variable
+                    }
 
                     logger.info(f"📤 Sending {file_path.name} to API...")
                     response = await client.post(
@@ -320,17 +327,33 @@ class ELWatchdogService:
 async def main():
     """Main entry point"""
 
-    # 🆕 UPDATED: Load new config structure
+    # Get machine from environment FIRST
+    machine_from_env = os.getenv("MACHINE")
+    if not machine_from_env:
+        logger.error("❌ MACHINE environment variable not set!")
+        logger.error("❌ Usage: MACHINE='Factory Line 1' uv run watchdog/el_watcher.py")
+        return
+
+    # Load config
     config = load_config()
-
-    # Get current machine config
-    current_machine = os.getenv(
-        "MACHINE", config.get("current_machine", "Test Machine")
-    )
     current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
-
     mode_config = config["modes"][current_mode]
-    machine_config = mode_config["machines"][current_machine]
+
+    # Find machine config by environment variable
+    machine_config = None
+    for machine_key, machine_data in mode_config["machines"].items():
+        if (
+            machine_data["machine_name"] == machine_from_env
+            or machine_data["machine_id"] == machine_from_env
+            or machine_key == machine_from_env
+        ):
+            machine_config = machine_data
+            break
+
+    if not machine_config:
+        logger.error(f"❌ Machine '{machine_from_env}' not found in config!")
+        logger.error(f"❌ Available machines: {list(mode_config['machines'].keys())}")
+        return
 
     # Use machine-specific paths
     WATCH_PATH = machine_config["smb_watch_path"]
@@ -339,7 +362,7 @@ async def main():
 
     logger.info("🚀 Saatvik EL Image Watcher Starting...")
     logger.info(f"🏭 Environment: {current_mode}")
-    logger.info(f"🤖 Machine: {current_machine}")
+    logger.info(f"🤖 Machine: {machine_from_env}")
     logger.info(f"📁 Watch Path: {WATCH_PATH}")
     logger.info(f"🌐 API Endpoint: {API_ENDPOINT}")
 

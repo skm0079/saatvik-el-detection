@@ -21,10 +21,12 @@ export function LiveImageViewer() {
     const [imageError, setImageError] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
+    const [selectedMachine, setSelectedMachine] = useState<string | null>("Factory Line 1"); // Always start with specific machine
 
     // Data hook with anti-flicker
-    const { data, loading, error, refetch, isRefreshing } = useRecentDetections(50, 0, { machine_id: selectedMachine ?? undefined });
+    const { data, loading, error, refetch, isRefreshing } = useRecentDetections(50, 0, {
+        machine_id: selectedMachine || "Factory Line 1" // Always send a machine ID
+    });
     const { data: machines } = useMachines();
 
     // Derived values
@@ -249,7 +251,7 @@ export function LiveImageViewer() {
                         {machines && selectedMachine === MACHINE_FILTER.ALL_MACHINES ? (
                             <span className="text-purple-500 font-medium text-sm">🌐 All Machines</span>
                         ) : machines ? (
-                            <span className="text-green-500 font-medium text-sm">🤖 {machines.current_machine}</span>
+                            <span className="text-green-500 font-medium text-sm">🤖 {selectedMachine || machines.current_machine}</span>
                         ) : null}
                     </div>
 

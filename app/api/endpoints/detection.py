@@ -37,6 +37,7 @@ async def detect_defect(
     file: UploadFile = File(...),
     el_folder_path: str = Form(default=""),
     confidence: float = Form(default=settings.confidence_threshold),
+    machine_name: str = Form(default=""),
     # Grid configuration parameters
     enable_grid: bool = Form(default=True, description="Enable grid cell mapping"),
     grid_rows: int = Form(default=6, description="Number of grid rows"),
@@ -64,6 +65,10 @@ async def detect_defect(
         )
 
     detection_id = str(uuid.uuid4())
+    # Include machine in the saved filename for processed watcher
+    actual_machine_name = machine_name or settings.machine_name
+    machine_safe_name = actual_machine_name.replace(" ", "_").replace("/", "_")
+
     timestamp = time.time()
     source_path = None
 
@@ -72,12 +77,35 @@ async def detect_defect(
         logger.info(f"📐 Grid: {grid_rows}x{grid_cols}, enabled: {enable_grid}")
 
         # Save uploaded file
-        source_path = settings.source_dir / f"{detection_id}_{file.filename}"
+        source_path = (
+            settings.source_dir / f"{detection_id}_{machine_safe_name}_{file.filename}"
+        )
         with open(source_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         current_machine_config = get_current_machine_config()
         file_stats = source_path.stat()
+
+        # Get actual machine_id from config
+        actual_machine_id = actual_machine_name
+        try:
+            from app.core.config import get_shared_config
+
+            shared_config = get_shared_config()
+            current_mode = shared_config.get("current_mode", "dev")
+            machines = shared_config["modes"][current_mode]["machines"]
+
+            # Find the actual machine_id from config
+            for machine_key, machine_config in machines.items():
+                if (
+                    machine_config["machine_name"] == actual_machine_name
+                    or machine_key == actual_machine_name
+                ):
+                    actual_machine_id = machine_config["machine_id"]
+                    break
+        except Exception as e:
+            logger.warning(f"Could not lookup machine_id: {e}")
+            actual_machine_id = actual_machine_name
 
         # Configure grid settings for YOLO service
         grid_config = {
@@ -94,9 +122,9 @@ async def detect_defect(
         record_data = DetectionRecordCreate(
             original_filename=file.filename,
             el_folder_path=el_folder_path or settings.el_folder_path,
-            source_file_path=f"{detection_id}_{file.filename}",
-            machine_id=settings.machine_id,
-            machine_name=settings.machine_name,
+            source_file_path=f"{detection_id}_{machine_safe_name}_{file.filename}",
+            machine_id=actual_machine_id,
+            machine_name=actual_machine_name,
             source_path_at_creation=current_machine_config["smb_source_path"],
             watch_path_at_creation=current_machine_config["smb_watch_path"],
             processed_path_at_creation=current_machine_config["smb_processed_path"],
@@ -229,8 +257,8 @@ async def detect_defect(
             "confidence_threshold": confidence,
             "status": DetectionStatus.RESULTS_SAVED.value,
             # Machine context
-            "machine_id": settings.machine_id,
-            "machine_name": settings.machine_name,
+            "machine_id": actual_machine_id,
+            "machine_name": actual_machine_name,
             # Grid analysis (real data from YOLO)
             "grid_analysis": {
                 "affected_cells": affected_cells,
@@ -352,13 +380,20 @@ async def get_recent_detections(
         # Build base query
         stmt = select(DetectionRecord).order_by(DetectionRecord.created_at.desc())
 
-        # Apply machine filtering
-        if machine_id is None:
-            stmt = stmt.where(DetectionRecord.machine_id == settings.machine_id)
-        elif machine_id == "all":
+        # Apply machine filtering - NEVER use global settings.machine_id
+        if machine_id == "all":
             logger.info("🔍 Showing all machines")
-        else:
+            # No filtering - show all machines
+        elif machine_id:
             stmt = stmt.where(DetectionRecord.machine_id == machine_id)
+            logger.info(f"🔍 Filtering by machine: {machine_id}")
+        else:
+            # If no machine specified, return empty result or error
+            logger.warning("⚠️ No machine_id specified and no default behavior")
+            # Option 1: Return empty results
+            stmt = stmt.where(DetectionRecord.machine_id == "NO_MACHINE")
+            # Option 2: Or you could show all machines by default
+            # No additional filtering needed
 
         # Apply status filter
         if status:
@@ -531,9 +566,11 @@ async def get_recent_detections(
 
         # Apply same filters to count
         if machine_id is None:
-            count_stmt = count_stmt.where(
-                DetectionRecord.machine_id == settings.machine_id
-            )
+            logger.warning("⚠️ No machine_id specified in detection request")
+            stmt = stmt.where(
+                DetectionRecord.machine_id == "NO_MACHINE"
+            )  # Return empty
+
         elif machine_id != "all":
             count_stmt = count_stmt.where(DetectionRecord.machine_id == machine_id)
 

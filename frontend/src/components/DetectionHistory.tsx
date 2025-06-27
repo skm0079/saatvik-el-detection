@@ -23,7 +23,7 @@ export function DetectionHistory() {
   const [limit, setLimit] = useState<number>(UI.DEFAULT_LIMIT);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<SearchFilters>({});
-  const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>("Factory Line 1"); // Always start with specific machine
 
   // Enhanced UX state
   const [isFirstLoad, setIsFirstLoad] = useState(true);
@@ -103,7 +103,7 @@ export function DetectionHistory() {
     setGridCellFilter('');
     setGridCellError('');
     setSearchQuery('');
-    setSelectedMachine(MACHINE_FILTER.CURRENT_MACHINE);
+    setSelectedMachine("Factory Line 1");
     setOffset(0);
     setLastAction('clear-all');
     setShowSuccess('All filters cleared');

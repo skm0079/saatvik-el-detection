@@ -1,6 +1,6 @@
 {
   "current_mode": "dev",
-  "current_machine": "Factory Line 2",
+  "current_machine": "Factory Line 1",
   "modes": {
     "dev": {
       "database_name": "saatvik_el_db_dev",
@@ -35,7 +35,7 @@
           "machine_id": "Factory Line 1",
           "machine_name": "Factory Line 1",
           "smb_source_path": "/mnt/shared3",
-          "smb_watch_path": "/mnt/shared3/2025-06-27/X",
+          "smb_watch_path": "//mnt/shared3/21-12-24/el/2025-06-27/Morning Shift",
           "smb_processed_path": "/mnt/shared1/processed",
           "client_ip": "10.10.1.193",
           "client_os": "windows"

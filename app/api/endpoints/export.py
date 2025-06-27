@@ -66,12 +66,20 @@ async def export_bulk_excel(
             .limit(limit)
         )
 
-        # Apply machine filter
-        if machine_id and machine_id != "all":
+        # Apply machine filtering - NEVER use global settings.machine_id
+        if machine_id == "all":
+            logger.info("🔍 Showing all machines")
+            # No filtering - show all machines
+        elif machine_id:
             stmt = stmt.where(DetectionRecord.machine_id == machine_id)
-        elif machine_id is None:
-            # Default to current machine if no machine_id specified
-            stmt = stmt.where(DetectionRecord.machine_id == settings.machine_id)
+            logger.info(f"🔍 Filtering by machine: {machine_id}")
+        else:
+            # If no machine specified, return empty result or error
+            logger.warning("⚠️ No machine_id specified and no default behavior")
+            # Option 1: Return empty results
+            stmt = stmt.where(DetectionRecord.machine_id == "NO_MACHINE")
+            # Option 2: Or you could show all machines by default
+            # No additional filtering needed
 
         # Apply date filters
         if date_from:

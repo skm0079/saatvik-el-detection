@@ -206,7 +206,7 @@ def get_current_shift_info(machine_name: str) -> Tuple[str, str]:
 
 
 def check_path_updates_needed(config: Dict) -> List[Dict]:
-    """Check which machines need path updates"""
+    """Check which machines need path updates - CHECK ALL MACHINES"""
     machines_to_update = []
     current_time = datetime.now()
 
@@ -214,7 +214,7 @@ def check_path_updates_needed(config: Dict) -> List[Dict]:
         f"Current time: {current_time.strftime('%Y-%m-%d %H:%M')} (Hour: {current_time.hour}, Minute: {current_time.minute})"
     )
 
-    # Get current mode and machines
+    # Get current mode and ALL machines
     current_mode = config.get("current_mode", "dev")
     machines = config.get("modes", {}).get(current_mode, {}).get("machines", {})
 
@@ -222,7 +222,9 @@ def check_path_updates_needed(config: Dict) -> List[Dict]:
         logger.log(f"⚠️ No machines found in mode '{current_mode}'")
         return []
 
-    # Show current shift info for all machines
+    logger.log(f"🔍 Checking {len(machines)} machines for path updates...")
+
+    # Show current shift info for ALL machines
     for machine_id, machine_config in machines.items():
         shift_name, expected_path = get_current_shift_info(machine_id)
         if machine_id in MACHINES_SHIFT_CONFIG:
@@ -230,13 +232,14 @@ def check_path_updates_needed(config: Dict) -> List[Dict]:
             start_time = f"{shift_config['start']:02d}:{shift_config['minutes']:02d}"
             end_time = f"{shift_config['end']:02d}:{shift_config['minutes']:02d}"
             logger.log(
-                f"{machine_id}: {shift_name} ({start_time}-{end_time}) → {expected_path} [shift date: {expected_path.split('/')[-2]}]"
+                f"{machine_id}: {shift_name} ({start_time}-{end_time}) → {expected_path}"
             )
         else:
             logger.log(f"{machine_id}: No shift config found")
 
-    logger.log("📊 PATH COMPARISON:")
+    logger.log("📊 PATH COMPARISON FOR ALL MACHINES:")
 
+    # Check ALL machines for updates
     for machine_id, machine_config in machines.items():
         current_path = machine_config["smb_watch_path"]
         shift_name, expected_path = get_current_shift_info(machine_id)
@@ -254,14 +257,19 @@ def check_path_updates_needed(config: Dict) -> List[Dict]:
                     "shift_name": shift_name,
                 }
             )
+            logger.log(f"    Status:   NEEDS UPDATE")
+        else:
+            logger.log(f"    Status:   UP TO DATE")
 
     return machines_to_update
 
 
 def update_machine_paths(config: Dict, updates: List[Dict]) -> Dict:
-    """Update machine paths in configuration"""
+    """Update machine paths in configuration - UPDATE ALL MACHINES"""
     updated_config = config.copy()
     current_mode = config.get("current_mode", "dev")
+
+    logger.log(f"🔄 Updating paths for {len(updates)} machines...")
 
     for update in updates:
         machine_id = update["machine_id"]
@@ -271,10 +279,11 @@ def update_machine_paths(config: Dict, updates: List[Dict]) -> Dict:
         updated_config["modes"][current_mode]["machines"][machine_id][
             "smb_watch_path"
         ] = new_path
-        logger.log(f"Updated {machine_id}:")
+        logger.log(f"✅ Updated {machine_id}:")
         logger.log(f"  Old: {old_path}")
         logger.log(f"  New: {new_path}")
 
+    logger.log(f"🔧 All {len(updates)} machine paths updated in configuration")
     return updated_config
 
 

@@ -52,103 +52,78 @@ class ImageViewerService:
         self.image_queue = Queue()
         self.observer = PollingObserver(timeout=3)
 
-    def _get_client_info(self) -> dict:
-        """Get client info from shared config"""
+    def _get_machine_config(self, machine_name: str) -> dict:
+        """Get machine config for specific machine"""
         config_file = Path("shared_config.json")
         if not config_file.exists():
-            # Fallback to current values if config missing
-            return {
-                "client_ip": "10.10.2.1",
-                "client_os": "windows",
-                "client_type": "windows",
-            }
+            return None
 
         try:
             with open(config_file, "r") as f:
                 config = json.load(f)
 
-            # 🆕 UPDATED: Get current machine and mode
             current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
-            current_machine = os.getenv(
-                "MACHINE", config.get("current_machine", "Test Machine")
-            )
-
             mode_config = config["modes"][current_mode]
-            machine_config = mode_config["machines"][current_machine]
 
-            return {
-                "client_ip": machine_config["client_ip"],
-                "client_os": machine_config["client_os"],
-                "client_type": machine_config["client_os"],
-            }
+            # Find machine by name
+            for machine_key, machine_config in mode_config["machines"].items():
+                if (
+                    machine_config["machine_name"] == machine_name
+                    or machine_config["machine_id"] == machine_name
+                    or machine_key == machine_name
+                ):
+                    return machine_config
+
+            logger.warning(f"Machine config not found for: {machine_name}")
+            return None
+
         except Exception as e:
-            logger.warning(f"Could not load shared config: {e}, using defaults")
-            return {
-                "client_ip": "10.10.2.1",
-                "client_os": "windows",
-                "client_type": "windows",
-            }
+            logger.warning(f"Could not load machine config: {e}")
+            return None
 
     def _copy_to_shared_and_trigger(self, image_path: Path):
-        """Simple copy to shared folder and trigger client"""
         try:
-            # Extract detection_id from filename (first part before underscore)
-            # Filename format: detection_id_original_filename_annotated.jpg
-            filename_parts = image_path.name.split("_")
-            if len(filename_parts) >= 2:
-                detection_id = filename_parts[0]
-                logger.info(f"🔍 Extracted detection_id: {detection_id}")
-            else:
-                detection_id = None
-                logger.warning(f"Could not extract detection_id from {image_path.name}")
+            # Extract machine info from filename
+            detection_id, machine_name = self._extract_machine_and_detection_id(
+                image_path.name
+            )
 
-            # 🆕 UPDATED: Use machine-specific SMB processed path
-            config_file = Path("shared_config.json")
-            if config_file.exists():
-                try:
-                    with open(config_file, "r") as f:
-                        config = json.load(f)
+            if not detection_id or not machine_name:
+                logger.warning(f"Could not extract machine info from {image_path.name}")
+                return
 
-                    current_mode = os.getenv("MODE", config.get("current_mode", "dev"))
-                    current_machine = os.getenv(
-                        "MACHINE", config.get("current_machine", "Test Machine")
-                    )
+            logger.info(f"🔍 Processing result for machine: {machine_name}")
 
-                    machine_config = config["modes"][current_mode]["machines"][
-                        current_machine
-                    ]
-                    shared_dir = Path(machine_config["smb_processed_path"])
+            # Get machine-specific config
+            machine_config = self._get_machine_config(machine_name)
+            if not machine_config:
+                logger.error(f"No config found for machine: {machine_name}")
+                return
 
-                except Exception as e:
-                    logger.warning(f"Could not load machine config: {e}, using default")
-                    shared_dir = Path("/mnt/shared/processed")
-            else:
-                shared_dir = Path("/mnt/shared/processed")
-
-            # Create shared processed folder
+            # Use machine-specific SMB path
+            shared_dir = Path(machine_config["smb_processed_path"])
             shared_dir.mkdir(parents=True, exist_ok=True)
 
-            # Simple copy to shared folder
-            if not shared_dir.exists():
-                logger.error(f"Shared directory does not exist: {shared_dir}")
-                return
+            # Copy to correct machine's shared folder
             shared_image_path = shared_dir / image_path.name
             shutil.copy2(image_path, shared_image_path)
 
-            logger.success(f"✅ Copied to shared: {shared_image_path}")
+            logger.success(
+                f"✅ Copied to {machine_name} shared folder: {shared_image_path}"
+            )
 
-            # Get client info
-            client_info = self._get_client_info()
-            client_os = client_info.get("client_os", "windows").lower()
-            client_ip = client_info.get("client_ip", "10.10.2.1")
+            # Use machine-specific client info
+            client_ip = machine_config.get("client_ip", "10.10.2.1")
+            client_os = machine_config.get("client_os", "windows").lower()
 
-            # Create network path
+            # Create network path for this machine
             if client_os == "windows":
-                network_path = f"\\\\10.10.1.4\\shared\\processed\\{image_path.name}"
+                # You'll need to adjust this based on your network setup
+                network_path = f"\\\\10.10.1.4\\{machine_name.replace(' ', '_')}\\processed\\{image_path.name}"
             else:
                 network_path = str(shared_image_path)
 
-            logger.info(f"🎯 Targeting {client_os} client at {client_ip}")
+            logger.info(f"🎯 Targeting {machine_name} at {client_ip}")
             logger.info(f"🪟 Network path: {network_path}")
 
             # Post Result Ready & Dropped to Client State
@@ -288,28 +263,32 @@ class ImageViewerService:
             self.observer.join()
             logger.info("✅ Processed watcher stopped")
 
-    def _extract_detection_id(self, filename: str) -> str:
-        """Extract detection_id from processed image filename"""
+    def _extract_machine_and_detection_id(self, filename: str) -> tuple:
+        """Extract machine and detection_id from processed image filename"""
         try:
-            # Expected format: detection_id_original_filename_annotated.jpg
-            # Example: a1b2c3d4-e5f6-7890-abcd-ef1234567890_solar_panel_001_annotated.jpg
+            # Expected format: detection_id_machine_name_original_filename_annotated.jpg
+            # Example: a1b2c3d4-e5f6-7890-abcd-ef1234567890_Factory_Line_1_solar_panel_001_annotated.jpg
 
-            # Split by underscore and take first part
             parts = filename.split("_")
-            potential_id = parts[0]
+            if len(parts) < 3:
+                logger.warning(f"Filename doesn't have enough parts: {filename}")
+                return None, None
 
-            # Validate it looks like a UUID (basic check)
-            if len(potential_id) == 36 and potential_id.count("-") == 4:
-                return potential_id
+            detection_id = parts[0]
+            machine_name = parts[1].replace("_", " ")  # Convert back to machine name
+
+            # Validate detection_id looks like a UUID
+            if len(detection_id) == 36 and detection_id.count("-") == 4:
+                return detection_id, machine_name
             else:
-                logger.warning(
-                    f"Filename doesn't contain valid detection_id: {filename}"
-                )
-                return None
+                logger.warning(f"Invalid detection_id format: {detection_id}")
+                return None, None
 
         except Exception as e:
-            logger.error(f"Failed to extract detection_id from {filename}: {e}")
-            return None
+            logger.error(
+                f"Failed to extract machine and detection_id from {filename}: {e}"
+            )
+            return None, None
 
 
 async def main():

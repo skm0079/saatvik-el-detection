@@ -11,6 +11,7 @@ import time
 router = APIRouter(prefix="/health", tags=["health"])
 
 
+# TODO: Change to actual Machine Id & Name
 @router.get("")
 async def health_check():
     """Basic health check with machine context"""

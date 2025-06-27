@@ -11,7 +11,7 @@ import logo from '@/assets/logo.png';
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>("Factory Line 1"); // Always start with specific machine
 
   // Enhanced date range state with default to today
   const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(() => {
@@ -238,7 +238,7 @@ export function Dashboard() {
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <div className="flex items-center space-x-2">
                   <span className="font-medium text-slate-700">🤖 Machine:</span>
-                  <span className="font-semibold text-blue-600">{health.machine_name}</span>
+                  <span className="font-semibold text-blue-600">{selectedMachine || health.machine_name}</span>
                   <HelpTooltips.MachineSelector size="sm" />
                 </div>
                 <div className="flex items-center space-x-2">
