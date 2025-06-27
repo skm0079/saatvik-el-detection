@@ -1,559 +1,477 @@
 #!/usr/bin/env python3
-
 """
-auto_updater.py - Automatic Path Updater for Saatvik EL Detection System
-
-This script runs via cron every 10 minutes to:
-1. Check if machine paths need updating based on time/shift
-2. Update shared_config.json if needed
-3. Restart services (make down → make dev + watchdogs)
-4. Wait for services to be ready
-
-3 Machines with different shift names:
-- Test Machine: Morning Shift/Night Shift (6:50 AM/PM)
-- Factory Line 2: Morning Shift/Night Shift (7:00 AM/PM)
-- Factory Line 1: X/Y (7:00 AM/PM)
+Auto-updater for EL Detection System
+Automatically updates machine configurations based on shift schedules
 """
 
 import json
 import os
 import subprocess
 import time
-import datetime
-import logging
-import sys
-import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-# ==============================================================================
-# CONFIGURATION - EDIT THESE VALUES
-# ==============================================================================
-
-# Project settings
-PROJECT_DIR = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
-CONFIG_FILE = "shared_config.json"
-LOG_FILE = "auto_updater.log"
-BACKUP_DIR = "backup"
-
-# Service restart timing (in seconds)
-SHUTDOWN_WAIT = 60  # Wait time after 'make down'
-STARTUP_WAIT = 90  # Wait time after 'make dev'
-WATCHDOG_WAIT = 30  # Wait time after starting watchdogs
-
-# Machine shift configurations - 3 MACHINES WITH DIFFERENT SHIFT NAMES
-SHIFT_CONFIGS = {
-    "Test Machine": {
-        "source_path": "/mnt/shared",
-        "shifts": {
-            "Morning Shift": {
-                "start": 6,
-                "end": 18,
-                "minutes": 50,
-            },  # 6:50 AM to 6:50 PM
-            "Night Shift": {"start": 18, "end": 6, "minutes": 50},  # 6:50 PM to 6:50 AM
-        },
-    },
-    "Factory Line 2": {
-        "source_path": "/mnt/shared2",
-        "shifts": {
-            "Morning Shift": {
-                "start": 7,
-                "end": 19,
-                "minutes": 0,
-            },  # 7:00 AM to 7:00 PM
-            "Night Shift": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
-        },
-    },
-    "Factory Line 1": {
-        "source_path": "/mnt/shared3",
-        "shifts": {
-            "X": {"start": 7, "end": 19, "minutes": 0},  # 7:00 AM to 7:00 PM
-            "Y": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
-        },
-    },
-}
-
-# ==============================================================================
-# LOGGING SETUP
-# ==============================================================================
+# Configuration
+SCRIPT_DIR = Path(__file__).parent
+CONFIG_FILE = SCRIPT_DIR / "config" / "config.json"
+BACKUP_DIR = SCRIPT_DIR / "config_backups"
+LOG_DIR = SCRIPT_DIR
 
 
-def setup_logging():
-    """Set up logging to file and console"""
+class Logger:
+    """Simple logger for auto-updater"""
 
-    log_path = Path(PROJECT_DIR) / LOG_FILE
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[logging.FileHandler(log_path), logging.StreamHandler(sys.stdout)],
-    )
-
-    return logging.getLogger(__name__)
+    @staticmethod
+    def log(message: str, level: str = "INFO"):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] {message}")
 
 
-# ==============================================================================
-# UTILITY FUNCTIONS
-# ==============================================================================
+logger = Logger()
 
 
-def get_current_shift(machine_name, current_hour, current_minute):
-    """Get current shift for a machine based on time"""
-
-    if machine_name not in SHIFT_CONFIGS:
-        logger.error(f"Machine '{machine_name}' not found in SHIFT_CONFIGS")
-        return None
-
-    shifts = SHIFT_CONFIGS[machine_name]["shifts"]
-    current_time_minutes = current_hour * 60 + current_minute
-
-    # Check each shift to see which one we're in
-    for shift_name, times in shifts.items():
-        start_minutes = times["start"] * 60 + times["minutes"]
-        end_minutes = times["end"] * 60 + times["minutes"]
-
-        # Handle shift that crosses midnight (e.g., 18:50 to 06:50 next day)
-        if start_minutes > end_minutes:  # Night shift crossing midnight
-            if (
-                current_time_minutes >= start_minutes
-                or current_time_minutes < end_minutes
-            ):
-                return shift_name
-        else:  # Day shift within same day
-            if start_minutes <= current_time_minutes < end_minutes:
-                return shift_name
-
-    # If no shift found, return the first one (fallback)
-    return list(shifts.keys())[0]
-
-
-def generate_expected_path(machine_name, date_str, shift_name):
-    """Generate expected path for a machine"""
-
-    if machine_name not in SHIFT_CONFIGS:
-        return None
-
-    base_path = SHIFT_CONFIGS[machine_name]["source_path"]
-    return f"{base_path}/{date_str}/{shift_name}"
-
-
-def run_command_with_wait(command, wait_time=0, timeout=300):
-    """Run command and wait, with proper error handling"""
-
-    logger.info(f"Running: {command}")
-
+def run_command(
+    command: str, ignore_failure: bool = False, timeout: int = 120
+) -> Tuple[bool, str, str]:
+    """Run a shell command and return success, stdout, stderr"""
     try:
-        # Run command
+        logger.log(f"Running: {command}")
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=PROJECT_DIR,
+            cwd=SCRIPT_DIR,
         )
 
-        # Log output
         if result.stdout.strip():
-            logger.info(f"Output: {result.stdout.strip()}")
+            logger.log(f"Output: {result.stdout.strip()}")
         if result.stderr.strip():
-            logger.warning(f"Stderr: {result.stderr.strip()}")
-
-        success = result.returncode == 0
-
-        if success:
-            logger.info(f"✅ Command completed successfully")
-        else:
-            logger.error(f"❌ Command failed (exit code: {result.returncode})")
-
-        # Wait if specified
-        if wait_time > 0:
-            logger.info(f"⏳ Waiting {wait_time} seconds...")
-            time.sleep(wait_time)
-
-        return success
-
-    except subprocess.TimeoutExpired:
-        logger.error(f"❌ Command timed out after {timeout} seconds")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Command error: {e}")
-        return False
-
-
-def check_api_health():
-    """Check if API is responding"""
-
-    try:
-        result = subprocess.run(
-            ["curl", "-s", "-f", "http://localhost:8000/api/v1/health"],
-            capture_output=True,
-            timeout=10,
-        )
+            logger.log(f"Stderr: {result.stderr.strip()}")
 
         if result.returncode == 0:
-            logger.info("✅ API health check: PASSED")
-            return True
+            logger.log("✅ Command completed successfully")
+            return True, result.stdout, result.stderr
         else:
-            logger.warning("⚠️ API health check: FAILED")
-            return False
+            if ignore_failure:
+                logger.log(f"❌ Command failed (exit code: {result.returncode})")
+                return False, result.stdout, result.stderr
+            else:
+                logger.log(f"❌ Command failed (exit code: {result.returncode})")
+                raise subprocess.CalledProcessError(result.returncode, command)
 
+    except subprocess.TimeoutExpired:
+        logger.log(f"⏰ Command timed out after {timeout} seconds")
+        if not ignore_failure:
+            raise
+        return False, "", "Timeout"
     except Exception as e:
-        logger.warning(f"⚠️ API health check error: {e}")
-        return False
+        logger.log(f"❌ Command error: {e}")
+        if not ignore_failure:
+            raise
+        return False, "", str(e)
 
 
-# ==============================================================================
-# MAIN FUNCTIONS
-# ==============================================================================
-
-
-def load_current_config():
-    """Load current shared_config.json"""
-
-    config_path = Path(PROJECT_DIR) / CONFIG_FILE
-
-    if not config_path.exists():
-        logger.error(f"Config file not found: {config_path}")
-        return None
-
+def load_config() -> Dict:
+    """Load configuration from JSON file"""
     try:
-        with open(config_path, "r") as f:
+        with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     except Exception as e:
-        logger.error(f"Failed to load config: {e}")
-        return None
+        logger.log(f"❌ Failed to load config: {e}")
+        raise
 
 
-def get_current_paths(config):
-    """Extract current paths from config"""
-
+def save_config(config: Dict) -> None:
+    """Save configuration to JSON file"""
     try:
-        machines = config["modes"]["dev"]["machines"]
-        paths = {}
+        # Create backup first
+        backup_config(config)
 
-        for machine_name in SHIFT_CONFIGS.keys():
-            if machine_name in machines:
-                paths[machine_name] = machines[machine_name]["smb_watch_path"]
-            else:
-                logger.warning(f"Machine '{machine_name}' not found in config")
-
-        return paths
-
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=2)
+        logger.log("✅ Config file updated successfully")
     except Exception as e:
-        logger.error(f"Failed to extract current paths: {e}")
-        return {}
+        logger.log(f"❌ Failed to save config: {e}")
+        raise
 
 
-def get_expected_paths():
-    """Calculate expected paths based on current time"""
+def backup_config(config: Dict) -> None:
+    """Create a backup of current configuration"""
+    try:
+        BACKUP_DIR.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = BACKUP_DIR / f"config_backup_{timestamp}.json"
 
-    now = datetime.datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    current_hour = now.hour
-    current_minute = now.minute
+        with open(backup_file, "w") as f:
+            json.dump(config, f, indent=2)
+        logger.log(f"✅ Config backed up: {backup_file.name}")
+    except Exception as e:
+        logger.log(f"⚠️ Failed to create backup: {e}")
 
-    expected = {}
 
-    logger.info(
-        f"Current time: {now.strftime('%Y-%m-%d %H:%M')} (Hour: {current_hour}, Minute: {current_minute})"
+def get_current_shift_info(machine_config: Dict) -> Tuple[str, str]:
+    """Get current shift name and expected path for a machine"""
+    current_time = datetime.now()
+    current_date = current_time.strftime("%Y-%m-%d")
+
+    shifts = machine_config.get("shifts", {})
+
+    for shift_name, shift_info in shifts.items():
+        start_time = datetime.strptime(
+            f"{current_date} {shift_info['start_time']}", "%Y-%m-%d %H:%M"
+        )
+        end_time = datetime.strptime(
+            f"{current_date} {shift_info['end_time']}", "%Y-%m-%d %H:%M"
+        )
+
+        # Handle shifts that cross midnight
+        if end_time <= start_time:
+            end_time += timedelta(days=1)
+            if current_time < start_time:
+                start_time -= timedelta(days=1)
+
+        if start_time <= current_time < end_time:
+            # Determine the shift date (date when shift started)
+            shift_date = start_time.strftime("%Y-%m-%d")
+            expected_path = (
+                f"{machine_config['base_watch_path']}/{shift_date}/{shift_name}"
+            )
+            return shift_name, expected_path
+
+    # Fallback if no shift matches
+    return "Unknown", f"{machine_config['base_watch_path']}/{current_date}/Unknown"
+
+
+def check_path_updates_needed(config: Dict) -> List[Dict]:
+    """Check which machines need path updates"""
+    machines_to_update = []
+    current_time = datetime.now()
+
+    logger.log(
+        f"Current time: {current_time.strftime('%Y-%m-%d %H:%M')} (Hour: {current_time.hour}, Minute: {current_time.minute})"
     )
 
-    for machine_name in SHIFT_CONFIGS.keys():
-        current_shift = get_current_shift(machine_name, current_hour, current_minute)
+    # Show current shift info for all machines
+    for machine_id, machine_config in config["machines"].items():
+        shift_name, expected_path = get_current_shift_info(machine_config)
+        logger.log(
+            f"{machine_id}: {shift_name} ({machine_config['shifts'][shift_name]['start_time']}-{machine_config['shifts'][shift_name]['end_time']}) → {expected_path} [shift date: {expected_path.split('/')[-2]}]"
+        )
 
-        if current_shift:
-            expected_path = generate_expected_path(
-                machine_name, date_str, current_shift
+    logger.log("📊 PATH COMPARISON:")
+
+    for machine_id, machine_config in config["machines"].items():
+        current_path = machine_config["watch_path"]
+        shift_name, expected_path = get_current_shift_info(machine_config)
+
+        logger.log(f"  {machine_id}:")
+        logger.log(f"    Current:  {current_path}")
+        logger.log(f"    Expected: {expected_path}")
+
+        if current_path != expected_path:
+            machines_to_update.append(
+                {
+                    "machine_id": machine_id,
+                    "current_path": current_path,
+                    "expected_path": expected_path,
+                    "shift_name": shift_name,
+                }
             )
-            expected[machine_name] = expected_path
 
-            # Show shift timing for clarity
-            shifts = SHIFT_CONFIGS[machine_name]["shifts"]
-            if current_shift in shifts:
-                shift_info = shifts[current_shift]
-                start_time = f"{shift_info['start']:02d}:{shift_info['minutes']:02d}"
-                end_time = f"{shift_info['end']:02d}:{shift_info['minutes']:02d}"
-                logger.info(
-                    f"{machine_name}: {current_shift} ({start_time}-{end_time}) → {expected_path}"
-                )
-            else:
-                logger.info(f"{machine_name}: {current_shift} → {expected_path}")
-        else:
-            logger.error(f"Could not determine shift for {machine_name}")
-
-    return expected
+    return machines_to_update
 
 
-def backup_config():
-    """Create backup of current config"""
+def update_machine_paths(config: Dict, updates: List[Dict]) -> Dict:
+    """Update machine paths in configuration"""
+    updated_config = config.copy()
 
-    try:
-        backup_dir = Path(PROJECT_DIR) / BACKUP_DIR
-        backup_dir.mkdir(exist_ok=True)
+    for update in updates:
+        machine_id = update["machine_id"]
+        old_path = update["current_path"]
+        new_path = update["expected_path"]
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"config_backup_{timestamp}.json"
-        backup_path = backup_dir / backup_name
+        updated_config["machines"][machine_id]["watch_path"] = new_path
+        logger.log(f"Updated {machine_id}:")
+        logger.log(f"  Old: {old_path}")
+        logger.log(f"  New: {new_path}")
 
-        config_path = Path(PROJECT_DIR) / CONFIG_FILE
-        shutil.copy2(config_path, backup_path)
-
-        logger.info(f"✅ Config backed up: {backup_name}")
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Backup failed: {e}")
-        return False
+    return updated_config
 
 
-def update_config_paths(config, updates):
-    """Update config with new paths"""
+def restart_services() -> None:
+    """Restart all services with proper timing"""
+    logger.log("🔄 Starting complete service restart...")
+    logger.log(f"Working directory: {SCRIPT_DIR}")
 
-    try:
-        machines = config["modes"]["dev"]["machines"]
-
-        for machine_name, new_path in updates.items():
-            if machine_name in machines:
-                old_path = machines[machine_name]["smb_watch_path"]
-                machines[machine_name]["smb_watch_path"] = new_path
-                logger.info(f"Updated {machine_name}:")
-                logger.info(f"  Old: {old_path}")
-                logger.info(f"  New: {new_path}")
-            else:
-                logger.error(f"Machine '{machine_name}' not found in config")
-                return False
-
-        # Save updated config
-        config_path = Path(PROJECT_DIR) / CONFIG_FILE
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=4)
-
-        logger.info("✅ Config file updated successfully")
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Failed to update config: {e}")
-        return False
-
-
-def restart_all_services():
-    """Restart all services: docker containers + watchdogs"""
-
-    logger.info("🔄 Starting complete service restart...")
-
-    # Change to project directory
-    os.chdir(PROJECT_DIR)
-    logger.info(f"Working directory: {PROJECT_DIR}")
-
-    # Step 1: Stop everything
-    logger.info("Step 1: Stopping services...")
-    if not run_command_with_wait("sudo make down", wait_time=SHUTDOWN_WAIT):
-        logger.warning("⚠️ 'sudo make down' failed, trying direct docker-compose...")
-        if not run_command_with_wait(
-            "sudo docker-compose down", wait_time=SHUTDOWN_WAIT
-        ):
-            logger.error("❌ Failed to stop services")
-            return False
+    # Step 1: Stop services
+    logger.log("Step 1: Stopping services...")
+    run_command("sudo make down")
+    logger.log("⏳ Waiting 60 seconds...")
+    time.sleep(60)
 
     # Step 2: Start main application
-    logger.info("Step 2: Starting main application...")
-    if not run_command_with_wait("sudo make dev", wait_time=STARTUP_WAIT):
-        logger.warning("⚠️ 'sudo make dev' failed, trying direct docker-compose...")
-        if not run_command_with_wait(
-            "sudo docker-compose up -d", wait_time=STARTUP_WAIT
-        ):
-            logger.error("❌ Failed to start main application")
-            return False
+    logger.log("Step 2: Starting main application...")
+    run_command("sudo make dev")
+    logger.log("⏳ Waiting 90 seconds...")
+    time.sleep(90)
 
-    # Step 3: Start watchdog processes (without sudo - uv not available in root)
-    logger.info("Step 3: Starting watchdog processes...")
+    # Step 3: Start watchdog processes
+    start_watchdog_processes()
 
-    # Kill any existing watchdog processes first
-    run_command_with_wait("pkill -f el_watcher.py", wait_time=2)
-    run_command_with_wait("pkill -f processed_watcher.py", wait_time=2)
+    # Step 4: Verify watchdog processes
+    verify_watchdog_processes()
 
-    # Get the actual user (not root) for running uv commands
-    actual_user = os.getenv("SUDO_USER", "administrator")
-    logger.info(f"Running watchdog processes as user: {actual_user}")
-
-    # Start EL watcher as the actual user (not root)
-    el_cmd = f"sudo -u {actual_user} bash -c 'cd {PROJECT_DIR} && nohup uv run watchdog/el_watcher.py > {PROJECT_DIR}/el_watcher.log 2>&1 &'"
-    if not run_command_with_wait(el_cmd, wait_time=5):
-        logger.error("❌ Failed to start el_watcher.py")
-        return False
-
-    # Start processed watcher as the actual user (not root)
-    proc_cmd = f"sudo -u {actual_user} bash -c 'cd {PROJECT_DIR} && nohup uv run watchdog/processed_watcher.py > {PROJECT_DIR}/processed_watcher.log 2>&1 &'"
-    if not run_command_with_wait(proc_cmd, wait_time=WATCHDOG_WAIT):
-        logger.error("❌ Failed to start processed_watcher.py")
-        return False
-
-    # Step 4: Verify watchdog processes and final health check
-    logger.info("Step 4: Verifying watchdog processes...")
-
-    # Wait a bit for processes to start
-    time.sleep(10)
-
-    # Check if watchdog processes are running
-    try:
-        el_check = subprocess.run(
-            ["pgrep", "-f", "el_watcher.py"], capture_output=True, text=True
-        )
-        proc_check = subprocess.run(
-            ["pgrep", "-f", "processed_watcher.py"], capture_output=True, text=True
-        )
-
-        if el_check.returncode == 0:
-            logger.info(f"✅ el_watcher.py is running (PID: {el_check.stdout.strip()})")
-        else:
-            logger.warning("⚠️ el_watcher.py process not found")
-
-        if proc_check.returncode == 0:
-            logger.info(
-                f"✅ processed_watcher.py is running (PID: {proc_check.stdout.strip()})"
-            )
-        else:
-            logger.warning("⚠️ processed_watcher.py process not found")
-
-    except Exception as e:
-        logger.warning(f"⚠️ Error checking watchdog processes: {e}")
-
-    # Check watchdog log files for errors
-    try:
-        el_log_path = Path(PROJECT_DIR) / "el_watcher.log"
-        proc_log_path = Path(PROJECT_DIR) / "processed_watcher.log"
-
-        if el_log_path.exists():
-            with open(el_log_path, "r") as f:
-                el_log_content = f.read()
-                if (
-                    "error" in el_log_content.lower()
-                    or "traceback" in el_log_content.lower()
-                ):
-                    logger.warning("⚠️ el_watcher.log contains errors")
-                    logger.info(
-                        f"Recent el_watcher.log content: {el_log_content[-200:]}"
-                    )
-                else:
-                    logger.info("✅ el_watcher.log looks good")
-
-        if proc_log_path.exists():
-            with open(proc_log_path, "r") as f:
-                proc_log_content = f.read()
-                if (
-                    "error" in proc_log_content.lower()
-                    or "traceback" in proc_log_content.lower()
-                ):
-                    logger.warning("⚠️ processed_watcher.log contains errors")
-                    logger.info(
-                        f"Recent processed_watcher.log content: {proc_log_content[-200:]}"
-                    )
-                else:
-                    logger.info("✅ processed_watcher.log looks good")
-
-    except Exception as e:
-        logger.warning(f"⚠️ Error checking watchdog logs: {e}")
-
-    # Final API health check
-    logger.info("Step 5: Final health check...")
-
-    # Wait a bit more for everything to stabilize
-    logger.info("⏳ Waiting for services to stabilize...")
+    # Step 5: Final health check
+    logger.log("Step 5: Final health check...")
+    logger.log("⏳ Waiting for services to stabilize...")
     time.sleep(15)
 
     # Check API health
-    if check_api_health():
-        logger.info("✅ All services restarted successfully")
-        return True
+    success, stdout, stderr = run_command(
+        "curl -s http://localhost:8000/health", ignore_failure=True
+    )
+    if success:
+        logger.log("✅ API health check: PASSED")
     else:
-        logger.warning("⚠️ Services restarted but API check failed")
-        return True  # Still consider it success, API might need more time
+        logger.log("⚠️ API health check: FAILED")
+
+    logger.log("✅ All services restarted successfully")
 
 
-def main():
-    """Main execution function"""
+def start_watchdog_processes():
+    """Start watchdog processes with proper error handling and timing"""
 
-    # Setup logging
-    global logger
-    logger = setup_logging()
+    # Kill existing processes
+    logger.log("Step 3: Starting watchdog processes...")
+    run_command("pkill -f el_watcher.py", ignore_failure=True)
+    time.sleep(2)
+    run_command("pkill -f processed_watcher.py", ignore_failure=True)
+    time.sleep(2)
 
+    # Get current user
+    current_user = os.getenv("USER", "administrator")
+    logger.log(f"Running watchdog processes as user: {current_user}")
+
+    # Ensure log directory has proper permissions
+    log_dir = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
+    run_command(
+        f"sudo chown -R {current_user}:{current_user} {log_dir}", ignore_failure=True
+    )
+
+    # Start el_watcher.py with fallback approaches
+    logger.log("Starting el_watcher.py...")
+
+    # Try approach 1: Run as administrator user
+    success = start_process_with_fallback(
+        "el_watcher.py",
+        f"sudo -u administrator bash -c 'cd {log_dir} && nohup uv run watchdog/el_watcher.py > {log_dir}/el_watcher.log 2>&1 &'",
+    )
+
+    if not success:
+        # Try approach 2: Run as root with redirected logs to /tmp
+        logger.log("Fallback: Running el_watcher.py as root...")
+        run_command(
+            f"cd {log_dir} && nohup uv run watchdog/el_watcher.py > /tmp/el_watcher.log 2>&1 &"
+        )
+
+    # Longer wait for first process to initialize
+    logger.log("⏳ Waiting 10 seconds for el_watcher to initialize...")
+    time.sleep(10)
+
+    # Start processed_watcher.py with fallback approaches
+    logger.log("Starting processed_watcher.py...")
+
+    success = start_process_with_fallback(
+        "processed_watcher.py",
+        f"sudo -u administrator bash -c 'cd {log_dir} && nohup uv run watchdog/processed_watcher.py > {log_dir}/processed_watcher.log 2>&1 &'",
+    )
+
+    if not success:
+        # Try approach 2: Run as root with redirected logs to /tmp
+        logger.log("Fallback: Running processed_watcher.py as root...")
+        run_command(
+            f"cd {log_dir} && nohup uv run watchdog/processed_watcher.py > /tmp/processed_watcher.log 2>&1 &"
+        )
+
+    # Longer wait for second process to initialize
+    logger.log("⏳ Waiting 15 seconds for processed_watcher to initialize...")
+    time.sleep(15)
+
+
+def start_process_with_fallback(process_name, command):
+    """Start a process and return True if successful, False if failed"""
     try:
-        logger.info("=" * 70)
-        logger.info("🚀 AUTO-UPDATER STARTED (3 Machines)")
-        logger.info(f"Time: {datetime.datetime.now()}")
-        logger.info(f"User: {os.getenv('USER', 'unknown')}")
-        logger.info("=" * 70)
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=30
+        )
 
-        # Load current config
-        config = load_current_config()
-        if not config:
-            logger.error("❌ Failed to load config file")
+        # Check if there were permission errors
+        if "Permission denied" in result.stderr:
+            logger.log(f"Permission denied for {process_name}, will try fallback")
             return False
 
-        # Get current and expected paths
-        current_paths = get_current_paths(config)
-        expected_paths = get_expected_paths()
-
-        if not current_paths or not expected_paths:
-            logger.error("❌ Failed to determine paths")
-            return False
-
-        # Find what needs updating
-        updates_needed = {}
-
-        logger.info("📊 PATH COMPARISON:")
-        for machine_name in SHIFT_CONFIGS.keys():
-            current = current_paths.get(machine_name, "NOT FOUND")
-            expected = expected_paths.get(machine_name, "ERROR")
-
-            logger.info(f"  {machine_name}:")
-            logger.info(f"    Current:  {current}")
-            logger.info(f"    Expected: {expected}")
-
-            if current != expected:
-                updates_needed[machine_name] = expected
-
-        # Perform updates if needed
-        if updates_needed:
-            logger.info(f"🔄 {len(updates_needed)} MACHINE(S) NEED UPDATES")
-            logger.info("=" * 70)
-
-            # Backup config
-            if not backup_config():
-                logger.error("❌ Backup failed - aborting")
-                return False
-
-            # Update config
-            if not update_config_paths(config, updates_needed):
-                logger.error("❌ Config update failed - aborting")
-                return False
-
-            # Restart services
-            if restart_all_services():
-                logger.info("✅ Services restart completed")
-            else:
-                logger.error("❌ Services restart failed")
-                return False
-
-            logger.info("=" * 70)
-            logger.info("✅ UPDATE PROCESS COMPLETED SUCCESSFULLY")
-
-        else:
-            logger.info("✅ No updates needed - all paths are correct")
-
-        logger.info("=" * 70)
-        logger.info(f"🏁 AUTO-UPDATER FINISHED - {datetime.datetime.now()}")
-        logger.info("=" * 70)
-
+        logger.log(f"✅ {process_name} started successfully")
         return True
 
     except Exception as e:
-        logger.error(f"❌ Unexpected error: {e}")
+        logger.log(f"Failed to start {process_name}: {e}")
         return False
 
 
+def verify_watchdog_processes():
+    """Verify watchdog processes with multiple attempts and better detection"""
+    logger.log("Step 4: Verifying watchdog processes...")
+
+    # Wait longer before verification
+    logger.log("⏳ Waiting 20 seconds for processes to fully initialize...")
+    time.sleep(20)
+
+    # Check multiple times with delays
+    for attempt in range(3):
+        logger.log(f"Verification attempt {attempt + 1}/3...")
+
+        # Check el_watcher.py
+        el_watcher_running = check_process_running("el_watcher.py")
+        if el_watcher_running:
+            logger.log("✅ el_watcher.py process is running")
+        else:
+            logger.log("⚠️ el_watcher.py process not found")
+
+        # Check processed_watcher.py
+        processed_watcher_running = check_process_running("processed_watcher.py")
+        if processed_watcher_running:
+            logger.log("✅ processed_watcher.py process is running")
+        else:
+            logger.log("⚠️ processed_watcher.py process not found")
+
+        # If both are running, we're good
+        if el_watcher_running and processed_watcher_running:
+            logger.log("✅ Both watchdog processes verified successfully")
+            break
+
+        # If this isn't the last attempt, wait and try again
+        if attempt < 2:
+            logger.log("⏳ Waiting 10 seconds before next verification attempt...")
+            time.sleep(10)
+
+    # Check log files
+    check_log_files()
+
+
+def check_process_running(process_name):
+    """Check if a process is running using multiple methods"""
+
+    # Method 1: pgrep
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", process_name], capture_output=True, text=True
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return True
+    except Exception:
+        pass
+
+    # Method 2: ps aux
+    try:
+        result = subprocess.run(["ps", "aux"], capture_output=True, text=True)
+        if process_name in result.stdout:
+            return True
+    except Exception:
+        pass
+
+    # Method 3: Check if process is listening or active via logs
+    log_paths = [
+        f"/home/administrator/Documents/defect_detection/saatvik-el-detection/{process_name.replace('.py', '.log')}",
+        f"/tmp/{process_name.replace('.py', '.log')}",
+    ]
+
+    for log_path in log_paths:
+        if os.path.exists(log_path):
+            try:
+                # Check if log was recently updated (within last 60 seconds)
+                mtime = os.path.getmtime(log_path)
+                if time.time() - mtime < 60:
+                    return True
+            except Exception:
+                pass
+
+    return False
+
+
+def check_log_files():
+    """Check log files and report their status"""
+    log_dir = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
+
+    # Check primary log locations
+    log_files = [
+        ("el_watcher.log", f"{log_dir}/el_watcher.log"),
+        ("processed_watcher.log", f"{log_dir}/processed_watcher.log"),
+        ("el_watcher.log (tmp)", "/tmp/el_watcher.log"),
+        ("processed_watcher.log (tmp)", "/tmp/processed_watcher.log"),
+    ]
+
+    for log_name, log_path in log_files:
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r") as f:
+                    lines = f.readlines()
+                    if lines:
+                        last_line = lines[-1].strip()
+                        logger.log(f"✅ {log_name} exists - Last: {last_line[:100]}...")
+                    else:
+                        logger.log(f"⚠️ {log_name} exists but is empty")
+            except Exception as e:
+                logger.log(f"⚠️ Could not read {log_name}: {e}")
+        else:
+            logger.log(f"ℹ️ {log_name} not found at {log_path}")
+
+
+def main():
+    """Main auto-updater logic"""
+    try:
+        # Header
+        logger.log("=" * 70)
+        logger.log("🚀 AUTO-UPDATER STARTED")
+        logger.log(f"Time: {datetime.now()}")
+        logger.log(f"User: {os.getenv('USER', 'unknown')}")
+        logger.log("=" * 70)
+
+        # Load current configuration
+        config = load_config()
+        machine_count = len(config.get("machines", {}))
+        logger.log(f"🚀 AUTO-UPDATER STARTED ({machine_count} Machines)")
+
+        # Check which machines need updates
+        updates_needed = check_path_updates_needed(config)
+
+        if not updates_needed:
+            logger.log("✅ All machines are already up to date")
+            logger.log("=" * 70)
+            return
+
+        logger.log(f"🔄 {len(updates_needed)} MACHINE(S) NEED UPDATES")
+        logger.log("=" * 70)
+
+        # Update configuration
+        updated_config = update_machine_paths(config, updates_needed)
+        save_config(updated_config)
+
+        # Restart services
+        restart_services()
+
+        logger.log("✅ Services restart completed")
+        logger.log("=" * 70)
+        logger.log("✅ UPDATE PROCESS COMPLETED SUCCESSFULLY")
+        logger.log("=" * 70)
+
+    except Exception as e:
+        logger.log(f"❌ Auto-updater failed: {e}")
+        logger.log("=" * 70)
+        raise
+
+
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    main()

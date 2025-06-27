@@ -11,14 +11,14 @@ from enum import Enum
 class DetectionStatus(str, Enum):
     """Detection processing status enum"""
 
-    RECEIVED = "received"  # API call received, file uploaded
-    PROCESSING = "processing"  # YOLO model running
-    AI_COMPLETE = "ai_complete"  # AI detection finished
-    RESULTS_SAVED = "results_saved"  # Results saved to processed folder
-    CLIENT_NOTIFIED = "client_notified"  # Client/viewer triggered
-    COMPLETED = "completed"  # Fully completed (kept for backward compatibility)
-    FAILED = "failed"  # Processing failed
-    SAVED = "saved"  # Final status - everything done and saved
+    RECEIVED = "received"
+    PROCESSING = "processing"
+    AI_COMPLETE = "ai_complete"
+    RESULTS_SAVED = "results_saved"
+    CLIENT_NOTIFIED = "client_notified"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SAVED = "saved"
 
 
 class DetectionRecordBase(SQLModel):
@@ -31,7 +31,7 @@ class DetectionRecordBase(SQLModel):
     machine_id: str = Field(index=True)
     machine_name: str
 
-    # Historical path storage (paths when detection was created)
+    # Historical path storage
     source_path_at_creation: Optional[str] = Field(default=None)
     watch_path_at_creation: Optional[str] = Field(default=None)
     processed_path_at_creation: Optional[str] = Field(default=None)
@@ -41,10 +41,11 @@ class DetectionRecordBase(SQLModel):
     confidence_threshold: float
     processing_time_ms: int
 
-    # Result file paths (relative)
+    # Result file paths
     annotated_image_path: Optional[str] = None
     json_results_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
+    grid_report_path: Optional[str] = None  # NEW: Grid analysis report
 
     # File metadata
     file_size_bytes: int
@@ -55,18 +56,26 @@ class DetectionRecord(DetectionRecordBase, table=True):
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
 
-    # Detailed detection results
+    # Detailed detection results (includes grid cell info per defect)
     detection_details: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON)
     )
 
-    # Status tracking with enum
+    # NEW: Grid configuration used for this detection
+    grid_config: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+
+    # NEW: Grid statistics calculated from detections
+    grid_statistics: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON)
+    )
+
+    # Status tracking
     status: DetectionStatus = Field(
         default=DetectionStatus.RECEIVED, sa_column=Column(SQLEnum(DetectionStatus))
     )
     error_message: Optional[str] = None
 
-    # Status transition timestamps
+    # Timestamps
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True)),
@@ -86,9 +95,7 @@ class DetectionRecord(DetectionRecordBase, table=True):
     completed_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True))
     )
-
-    # Legacy field (for backward compatibility)
-    processed_at: Optional[datetime] = Field(
+    processed_at: Optional[datetime] = Field(  # Legacy compatibility
         default=None, sa_column=Column(DateTime(timezone=True))
     )
 
@@ -105,18 +112,19 @@ class DetectionRecordCreate(SQLModel):
     source_file_path: str
     machine_id: str
     machine_name: str
-
     source_path_at_creation: Optional[str] = None
     watch_path_at_creation: Optional[str] = None
     processed_path_at_creation: Optional[str] = None
-
     total_defects: int = 0
     confidence_threshold: float
     processing_time_ms: int
     annotated_image_path: Optional[str] = None
     json_results_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
+    grid_report_path: Optional[str] = None
     file_size_bytes: int
+    grid_config: Optional[Dict[str, Any]] = None
+    grid_statistics: Optional[Dict[str, Any]] = None
 
 
 class DetectionRecordRead(DetectionRecordBase):
@@ -124,16 +132,17 @@ class DetectionRecordRead(DetectionRecordBase):
     status: DetectionStatus
     created_at: datetime
     detection_details: Optional[Dict[str, Any]] = None
+    grid_config: Optional[Dict[str, Any]] = None
+    grid_statistics: Optional[Dict[str, Any]] = None
     processing_started_at: Optional[datetime] = None
     ai_completed_at: Optional[datetime] = None
     results_saved_at: Optional[datetime] = None
     client_notified_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-
-    # Historical paths included in read response
     source_path_at_creation: Optional[str] = None
     watch_path_at_creation: Optional[str] = None
     processed_path_at_creation: Optional[str] = None
+    grid_report_path: Optional[str] = None
 
 
 class DetectionRecordUpdate(SQLModel):
@@ -144,3 +153,6 @@ class DetectionRecordUpdate(SQLModel):
     results_saved_at: Optional[datetime] = None
     client_notified_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    grid_config: Optional[Dict[str, Any]] = None
+    grid_statistics: Optional[Dict[str, Any]] = None
+    grid_report_path: Optional[str] = None

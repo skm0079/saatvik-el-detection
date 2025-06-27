@@ -18,6 +18,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "pydantic-settings>=2.9.1",
     "python-multipart>=0.0.20",
+    "reportlab>=4.4.2",
     "sqlmodel>=0.0.24",
     "ultralytics>=8.3.156",
     "uvicorn>=0.34.3",
