@@ -56,7 +56,6 @@ services:
     image: postgres:15.0-alpine
     container_name: saatvik-el-db-stage
     restart: unless-stopped
-    user: "999:999"
     environment:
       POSTGRES_DB: saatvik_el_db_staging
       POSTGRES_USER: postgres

@@ -8,7 +8,7 @@ import json
 import os
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -43,10 +43,14 @@ MACHINES_SHIFT_CONFIG = {
         },
     },
     "Factory Line 1": {
-        "base_path": "/mnt/shared3",
+        "base_path": "/mnt/shared3/21-12-24/el",
         "shifts": {
-            "X": {"start": 7, "end": 19, "minutes": 0},  # 7:00 AM to 7:00 PM
-            "Y": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
+            "Morning Shift": {
+                "start": 7,
+                "end": 19,
+                "minutes": 0,
+            },  # 7:00 AM to 7:00 PM
+            "Night Shift": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
         },
     },
 }
@@ -178,18 +182,20 @@ def get_current_shift_for_machine(machine_name, current_hour, current_minute):
 
 
 def generate_expected_path(machine_name, date_str, shift_name):
-    """Generate expected smb_watch_path for a machine"""
+    """Generate expected smb_watch_path for a machine with correct date logic"""
     if machine_name not in MACHINES_SHIFT_CONFIG:
         return None
 
     base_path = MACHINES_SHIFT_CONFIG[machine_name]["base_path"]
+
+    # For night shifts, use the date when the shift STARTED
+    # Night shift on 27th 7PM -> 28th 7AM should use "2025-06-27" throughout
     return f"{base_path}/{date_str}/{shift_name}"
 
 
 def get_current_shift_info(machine_name: str) -> Tuple[str, str]:
-    """Get current shift name and expected path for a machine"""
+    """Get current shift name and expected path for a machine with correct date handling"""
     current_time = datetime.now()
-    current_date = current_time.strftime("%Y-%m-%d")
 
     # Get current shift based on hardcoded definitions
     current_shift = get_current_shift_for_machine(
@@ -199,8 +205,18 @@ def get_current_shift_info(machine_name: str) -> Tuple[str, str]:
     if not current_shift:
         return "Unknown", ""
 
+    # FIXED: Determine the correct date for the path
+    # For night shifts that started before midnight, use previous day's date
+    if current_shift == "Night Shift" and current_time.hour < 7:
+        # It's past midnight but still night shift from previous day
+        # Use previous day's date for the path
+        path_date = (current_time - timedelta(days=1)).strftime("%Y-%m-%d")
+    else:
+        # Use current day's date
+        path_date = current_time.strftime("%Y-%m-%d")
+
     # Generate expected path
-    expected_path = generate_expected_path(machine_name, current_date, current_shift)
+    expected_path = generate_expected_path(machine_name, path_date, current_shift)
 
     return current_shift, expected_path
 
@@ -368,18 +384,40 @@ def start_watchdog_processes():
         logger.log(f"el_watcher.py attempt {attempt + 1}/3...")
 
         # Try approach 1: Run as administrator user
-        success = start_process_with_fallback(
-            "el_watcher.py",
-            f"sudo -u administrator bash -c 'cd {log_dir} && nohup uv run watchdog/el_watcher.py > {log_dir}/el_watcher.log 2>&1 &'",
-        )
+        # Start all 3 machines with MACHINE environment variable
+        machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
+        for machine in machines:
+            log_file = machine.replace(" ", "_").lower()
+            success = start_process_with_fallback(
+                f"el_watcher.py ({machine})",
+                f"sudo -u administrator bash -c 'cd {log_dir} && nohup env MACHINE=\"{machine}\" uv run watchdog/el_watcher.py > {log_dir}/{log_file}.log 2>&1 &'",
+            )
+            if not success:
+                # Fallback approach
+                run_command(
+                    f'cd {log_dir} && nohup MACHINE="{machine}" uv run watchdog/el_watcher.py > /tmp/{log_file}.log 2>&1 &',
+                    ignore_failure=True,
+                )
+            time.sleep(5)  # Wait between starting each machine
 
         if not success:
             # Try approach 2: Run as root with redirected logs to /tmp
             logger.log("Fallback: Running el_watcher.py as root...")
-            run_command(
-                f"cd {log_dir} && nohup uv run watchdog/el_watcher.py > /tmp/el_watcher.log 2>&1 &",
-                ignore_failure=True,
-            )
+            # Start all 3 machines with MACHINE environment variable
+            machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
+            for machine in machines:
+                log_file = machine.replace(" ", "_").lower()
+                success = start_process_with_fallback(
+                    f"el_watcher.py ({machine})",
+                    f"sudo -u administrator bash -c 'cd {log_dir} && nohup env MACHINE=\"{machine}\" uv run watchdog/el_watcher.py > {log_dir}/{log_file}.log 2>&1 &'",
+                )
+                if not success:
+                    # Fallback approach
+                    run_command(
+                        f'cd {log_dir} && nohup MACHINE="{machine}" uv run watchdog/el_watcher.py > /tmp/{log_file}.log 2>&1 &',
+                        ignore_failure=True,
+                    )
+                time.sleep(5)  # Wait between starting each machine
 
         # Wait and check if process started
         time.sleep(10)
@@ -467,12 +505,18 @@ def verify_watchdog_processes():
     for attempt in range(5):
         logger.log(f"Verification attempt {attempt + 1}/5...")
 
-        # Check el_watcher.py
-        el_watcher_running = check_process_running("el_watcher.py")
-        if el_watcher_running:
-            logger.log("✅ el_watcher.py process is running")
-        else:
-            logger.log("⚠️ el_watcher.py process not found")
+        # Check el_watcher.py (should be 3 processes)
+        el_watcher_count = 0
+        machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
+        for machine in machines:
+            if check_process_running(f"MACHINE={machine}"):
+                el_watcher_count += 1
+                logger.log(f"✅ el_watcher.py for {machine} is running")
+            else:
+                logger.log(f"⚠️ el_watcher.py for {machine} not found")
+
+        logger.log(f"📊 Found {el_watcher_count}/3 el_watcher processes")
+        el_watcher_running = el_watcher_count >= 2  # At least 2 of 3 machines working
 
         # Check processed_watcher.py
         processed_watcher_running = check_process_running("processed_watcher.py")

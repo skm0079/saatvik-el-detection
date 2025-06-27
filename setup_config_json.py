@@ -17,14 +17,14 @@ import datetime
 from pathlib import Path
 
 # ==============================================================================
-# MACHINE & SHIFT CONFIGURATION
+## MACHINE & SHIFT CONFIGURATION
 # ==============================================================================
 
 # Project configuration
 PROJECT_DIR = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
 CONFIG_FILE = "shared_config.json"
 
-# Machine configurations - 3 MACHINES WITH DIFFERENT SHIFT NAMES
+# Machine configurations - 3 MACHINES WITH STANDARDIZED SHIFT NAMES
 MACHINES = {
     "Test Machine": {
         "machine_id": "IT Office Machine",
@@ -61,13 +61,17 @@ MACHINES = {
     "Factory Line 1": {
         "machine_id": "Factory Line 1",
         "machine_name": "Factory Line 1",
-        "smb_source_path": "/mnt/shared3",
+        "smb_source_path": "/mnt/shared3/21-12-24/el",
         "smb_processed_path": "/mnt/shared1/processed",
         "client_ip": "10.10.1.193",
         "client_os": "windows",
         "shift_config": {
-            "X": {"start": 7, "end": 19, "minutes": 0},  # 7:00 AM to 7:00 PM (called X)
-            "Y": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM (called Y)
+            "Morning Shift": {
+                "start": 7,
+                "end": 19,
+                "minutes": 0,
+            },  # 7:00 AM to 7:00 PM
+            "Night Shift": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
         },
     },
 }

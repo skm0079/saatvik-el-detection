@@ -830,3 +830,11 @@ MACHINE="Factory Line 2" nohup uv run watchdog/el_watcher.py > el_watcher_line2.
 MACHINE="Factory Line 1" nohup uv run watchdog/el_watcher.py > el_watcher_line1.log 2>&1 &
 
 current_machine = os.getenv("MACHINE", config.get("current_machine", "Test Machine"))
+
+# Complete clean start
+sudo make down
+sudo rm -rf ./data/postgres
+sudo mkdir -p ./data/postgres
+sudo chown -R 999:999 ./data/postgres
+sudo chmod -R 700 ./data/postgres
+sudo make dev
