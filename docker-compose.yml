@@ -1,5 +1,21 @@
 # File: docker-compose.yml (Development with Frontend)
 services:
+  # PostgreSQL Permission Init Container - runs BEFORE postgres
+  postgres-permissions:
+    image: alpine:latest
+    container_name: saatvik-el-postgres-init
+    command: |
+      sh -c "
+        echo 'Setting up PostgreSQL data directory permissions...'
+        mkdir -p /var/lib/postgresql/data
+        chown -R 70:70 /var/lib/postgresql/data
+        chmod -R 700 /var/lib/postgresql/data
+        echo 'PostgreSQL permissions configured successfully'
+      "
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: "no" # Only run once
+
   # Frontend build service - runs first to build React app
   frontend-build:
     build:
@@ -11,6 +27,30 @@ services:
       - ./app/static:/app/dist:rw
     environment:
       - NODE_ENV=production
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15.0-alpine
+    container_name: saatvik-el-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saatvik_el_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Ensure postgres user has proper permissions
+      POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=peer"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    depends_on:
+      postgres-permissions:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # FastAPI backend service
   fastapi-app:
@@ -48,25 +88,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # PostgreSQL database
-  postgres:
-    image: postgres:15.0-alpine
-    container_name: saatvik-el-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: saatvik_el_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 volumes:
   postgres_data:
