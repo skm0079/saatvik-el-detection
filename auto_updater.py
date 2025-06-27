@@ -303,33 +303,137 @@ def update_machine_paths(config: Dict, updates: List[Dict]) -> Dict:
     return updated_config
 
 
+def kill_old_processes():
+    """Kill old watchdog processes with better error handling"""
+    logger.log("🔄 Stopping old watchdog processes...")
+
+    # Kill processes more aggressively
+    commands = [
+        "pkill -9 -f el_watcher.py",
+        "pkill -9 -f processed_watcher.py",
+        "pkill -9 -f 'MACHINE=.*el_watcher'",
+        "ps aux | grep 'el_watcher.py' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
+        "ps aux | grep 'processed_watcher.py' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
+    ]
+
+    for cmd in commands:
+        run_command(cmd, ignore_failure=True)
+        time.sleep(2)
+
+    logger.log("✅ Old processes terminated")
+
+
+def start_el_watcher_simple(machine: str) -> bool:
+    """Start el_watcher for a single machine with simplified approach"""
+    log_file = machine.replace(" ", "_").lower()
+
+    # Simple direct command without complex sudo chains
+    cmd = f"cd {SCRIPT_DIR} && MACHINE='{machine}' nohup uv run watchdog/el_watcher.py > /tmp/{log_file}.log 2>&1 &"
+
+    try:
+        # Use Popen for non-blocking execution
+        process = subprocess.Popen(
+            cmd,
+            shell=True,
+            cwd=SCRIPT_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=os.setsid,  # Create new process group
+        )
+
+        logger.log(f"✅ Started el_watcher for {machine} (PID: {process.pid})")
+        return True
+
+    except Exception as e:
+        logger.log(f"❌ Failed to start el_watcher for {machine}: {e}")
+        return False
+
+
+def start_processed_watcher_simple() -> bool:
+    """Start processed_watcher with simplified approach"""
+    cmd = f"cd {SCRIPT_DIR} && nohup uv run watchdog/processed_watcher.py > /tmp/processed_watcher.log 2>&1 &"
+
+    try:
+        # Use Popen for non-blocking execution
+        process = subprocess.Popen(
+            cmd,
+            shell=True,
+            cwd=SCRIPT_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=os.setsid,  # Create new process group
+        )
+
+        logger.log(f"✅ Started processed_watcher (PID: {process.pid})")
+        return True
+
+    except Exception as e:
+        logger.log(f"❌ Failed to start processed_watcher: {e}")
+        return False
+
+
+def check_process_running(process_pattern: str) -> bool:
+    """Check if a process is running"""
+    try:
+        result = subprocess.run(
+            f"pgrep -f '{process_pattern}'", shell=True, capture_output=True, text=True
+        )
+        return result.returncode == 0 and result.stdout.strip()
+    except:
+        return False
+
+
 def restart_services() -> None:
-    """Restart all services with proper timing"""
+    """Restart all services with simplified watchdog management"""
     logger.log("🔄 Starting complete service restart...")
     logger.log(f"Working directory: {SCRIPT_DIR}")
 
     # Step 1: Stop services
     logger.log("Step 1: Stopping services...")
     run_command("sudo make down")
+    logger.log("⏳ Waiting 30 seconds...")
+    time.sleep(30)
+
+    # Step 2: Kill old processes
+    kill_old_processes()
+
+    # Step 3: Start main application
+    logger.log("Step 2: Starting main application...")
+    run_command("sudo make dev")
     logger.log("⏳ Waiting 60 seconds...")
     time.sleep(60)
 
-    # Step 2: Start main application
-    logger.log("Step 2: Starting main application...")
-    run_command("sudo make dev")
-    logger.log("⏳ Waiting 90 seconds...")
-    time.sleep(90)
+    # Step 4: Start watchdog processes with simplified approach
+    logger.log("Step 3: Starting watchdog processes...")
 
-    # Step 3: Start watchdog processes
-    start_watchdog_processes()
+    machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
+    el_watcher_success = 0
 
-    # Step 4: Verify watchdog processes
-    verify_watchdog_processes()
+    for machine in machines:
+        if start_el_watcher_simple(machine):
+            el_watcher_success += 1
+        time.sleep(3)  # Small delay between starts
+
+    # Start processed_watcher
+    processed_watcher_success = start_processed_watcher_simple()
+
+    # Wait for processes to initialize
+    logger.log("⏳ Waiting 20 seconds for processes to initialize...")
+    time.sleep(20)
+
+    # Simple verification
+    logger.log("Step 4: Verifying processes...")
+
+    el_running = check_process_running("el_watcher.py")
+    processed_running = check_process_running("processed_watcher.py")
+
+    logger.log(f"📊 el_watcher processes: {el_watcher_success}/3 started")
+    logger.log(f"📊 el_watcher running: {'✅' if el_running else '❌'}")
+    logger.log(f"📊 processed_watcher running: {'✅' if processed_running else '❌'}")
 
     # Step 5: Final health check
     logger.log("Step 5: Final health check...")
-    logger.log("⏳ Waiting for services to stabilize...")
-    time.sleep(15)
+    time.sleep(10)
 
     # Check API health
     success, stdout, stderr = run_command(
@@ -340,275 +444,7 @@ def restart_services() -> None:
     else:
         logger.log("⚠️ API health check: FAILED")
 
-    logger.log("✅ All services restarted successfully")
-
-
-def start_watchdog_processes():
-    """Start watchdog processes with proper error handling and timing"""
-
-    # Kill existing processes with retries
-    logger.log("Step 3: Starting watchdog processes...")
-    for attempt in range(3):
-        run_command("pkill -f el_watcher.py", ignore_failure=True)
-        time.sleep(3)
-        run_command("pkill -f processed_watcher.py", ignore_failure=True)
-        time.sleep(3)
-
-        # Check if processes are actually killed
-        el_running = check_process_running("el_watcher.py")
-        processed_running = check_process_running("processed_watcher.py")
-
-        if not el_running and not processed_running:
-            logger.log("✅ Old processes successfully terminated")
-            break
-        else:
-            logger.log(
-                f"⚠️ Attempt {attempt + 1}: Some processes still running, retrying..."
-            )
-
-    # Get current user
-    current_user = os.getenv("USER", "administrator")
-    logger.log(f"Running watchdog processes as user: {current_user}")
-
-    # Ensure log directory has proper permissions
-    log_dir = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
-    run_command(
-        f"sudo chown -R administrator:administrator {log_dir}", ignore_failure=True
-    )
-
-    # Start el_watcher.py with retries
-    logger.log("Starting el_watcher.py...")
-    el_started = False
-
-    for attempt in range(3):
-        logger.log(f"el_watcher.py attempt {attempt + 1}/3...")
-
-        # Try approach 1: Run as administrator user
-        # Start all 3 machines with MACHINE environment variable
-        machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
-        for machine in machines:
-            log_file = machine.replace(" ", "_").lower()
-            success = start_process_with_fallback(
-                f"el_watcher.py ({machine})",
-                f"sudo -u administrator bash -c 'cd {log_dir} && nohup env MACHINE=\"{machine}\" uv run watchdog/el_watcher.py > {log_dir}/{log_file}.log 2>&1 &'",
-            )
-            if not success:
-                # Fallback approach
-                run_command(
-                    f'cd {log_dir} && nohup MACHINE="{machine}" uv run watchdog/el_watcher.py > /tmp/{log_file}.log 2>&1 &',
-                    ignore_failure=True,
-                )
-            time.sleep(5)  # Wait between starting each machine
-
-        if not success:
-            # Try approach 2: Run as root with redirected logs to /tmp
-            logger.log("Fallback: Running el_watcher.py as root...")
-            # Start all 3 machines with MACHINE environment variable
-            machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
-            for machine in machines:
-                log_file = machine.replace(" ", "_").lower()
-                success = start_process_with_fallback(
-                    f"el_watcher.py ({machine})",
-                    f"sudo -u administrator bash -c 'cd {log_dir} && nohup env MACHINE=\"{machine}\" uv run watchdog/el_watcher.py > {log_dir}/{log_file}.log 2>&1 &'",
-                )
-                if not success:
-                    # Fallback approach
-                    run_command(
-                        f'cd {log_dir} && nohup MACHINE="{machine}" uv run watchdog/el_watcher.py > /tmp/{log_file}.log 2>&1 &',
-                        ignore_failure=True,
-                    )
-                time.sleep(5)  # Wait between starting each machine
-
-        # Wait and check if process started
-        time.sleep(10)
-        if check_process_running("el_watcher.py"):
-            logger.log("✅ el_watcher.py started successfully")
-            el_started = True
-            break
-        else:
-            logger.log("⚠️ el_watcher.py not detected, retrying...")
-
-    if not el_started:
-        logger.log("❌ Failed to start el_watcher.py after 3 attempts")
-
-    # Wait longer for first process to fully initialize
-    logger.log("⏳ Waiting 20 seconds for el_watcher to initialize...")
-    time.sleep(20)
-
-    # Start processed_watcher.py with retries
-    logger.log("Starting processed_watcher.py...")
-    processed_started = False
-
-    for attempt in range(3):
-        logger.log(f"processed_watcher.py attempt {attempt + 1}/3...")
-
-        success = start_process_with_fallback(
-            "processed_watcher.py",
-            f"sudo -u administrator bash -c 'cd {log_dir} && nohup uv run watchdog/processed_watcher.py > {log_dir}/processed_watcher.log 2>&1 &'",
-        )
-
-        if not success:
-            # Try approach 2: Run as root with redirected logs to /tmp
-            logger.log("Fallback: Running processed_watcher.py as root...")
-            run_command(
-                f"cd {log_dir} && nohup uv run watchdog/processed_watcher.py > /tmp/processed_watcher.log 2>&1 &",
-                ignore_failure=True,
-            )
-
-        # Wait and check if process started
-        time.sleep(10)
-        if check_process_running("processed_watcher.py"):
-            logger.log("✅ processed_watcher.py started successfully")
-            processed_started = True
-            break
-        else:
-            logger.log("⚠️ processed_watcher.py not detected, retrying...")
-
-    if not processed_started:
-        logger.log("❌ Failed to start processed_watcher.py after 3 attempts")
-
-    # Final wait for both processes to stabilize
-    logger.log("⏳ Waiting 20 seconds for both processes to stabilize...")
-    time.sleep(20)
-
-
-def start_process_with_fallback(process_name, command):
-    """Start a process and return True if successful, False if failed"""
-    try:
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=30
-        )
-
-        # Check if there were permission errors
-        if "Permission denied" in result.stderr:
-            logger.log(f"Permission denied for {process_name}, will try fallback")
-            return False
-
-        logger.log(f"✅ {process_name} command executed")
-        return True
-
-    except Exception as e:
-        logger.log(f"Failed to start {process_name}: {e}")
-        return False
-
-
-def verify_watchdog_processes():
-    """Verify watchdog processes with multiple attempts and better detection"""
-    logger.log("Step 4: Verifying watchdog processes...")
-
-    # Wait longer before verification
-    logger.log("⏳ Waiting 30 seconds for processes to fully initialize...")
-    time.sleep(30)
-
-    # Check multiple times with delays
-    both_running = False
-    for attempt in range(5):
-        logger.log(f"Verification attempt {attempt + 1}/5...")
-
-        # Check el_watcher.py (should be 3 processes)
-        el_watcher_count = 0
-        machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
-        for machine in machines:
-            if check_process_running(f"MACHINE={machine}"):
-                el_watcher_count += 1
-                logger.log(f"✅ el_watcher.py for {machine} is running")
-            else:
-                logger.log(f"⚠️ el_watcher.py for {machine} not found")
-
-        logger.log(f"📊 Found {el_watcher_count}/3 el_watcher processes")
-        el_watcher_running = el_watcher_count >= 2  # At least 2 of 3 machines working
-
-        # Check processed_watcher.py
-        processed_watcher_running = check_process_running("processed_watcher.py")
-        if processed_watcher_running:
-            logger.log("✅ processed_watcher.py process is running")
-        else:
-            logger.log("⚠️ processed_watcher.py process not found")
-
-        # If both are running, we're good
-        if el_watcher_running and processed_watcher_running:
-            logger.log("✅ Both watchdog processes verified successfully")
-            both_running = True
-            break
-
-        # If this isn't the last attempt, wait and try again
-        if attempt < 4:
-            logger.log("⏳ Waiting 20 seconds before next verification attempt...")
-            time.sleep(20)
-
-    if not both_running:
-        logger.log("⚠️ Not all watchdog processes could be verified")
-
-    # Check log files
-    check_log_files()
-
-
-def check_process_running(process_name):
-    """Check if a process is running using multiple methods"""
-
-    # Method 1: pgrep
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", process_name], capture_output=True, text=True
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return True
-    except Exception:
-        pass
-
-    # Method 2: ps aux
-    try:
-        result = subprocess.run(["ps", "aux"], capture_output=True, text=True)
-        if process_name in result.stdout:
-            return True
-    except Exception:
-        pass
-
-    # Method 3: Check if process is listening or active via logs
-    log_paths = [
-        f"/home/administrator/Documents/defect_detection/saatvik-el-detection/{process_name.replace('.py', '.log')}",
-        f"/tmp/{process_name.replace('.py', '.log')}",
-    ]
-
-    for log_path in log_paths:
-        if os.path.exists(log_path):
-            try:
-                # Check if log was recently updated (within last 90 seconds)
-                mtime = os.path.getmtime(log_path)
-                if time.time() - mtime < 90:
-                    return True
-            except Exception:
-                pass
-
-    return False
-
-
-def check_log_files():
-    """Check log files and report their status"""
-    log_dir = "/home/administrator/Documents/defect_detection/saatvik-el-detection"
-
-    # Check primary log locations
-    log_files = [
-        ("el_watcher.log", f"{log_dir}/el_watcher.log"),
-        ("processed_watcher.log", f"{log_dir}/processed_watcher.log"),
-        ("el_watcher.log (tmp)", "/tmp/el_watcher.log"),
-        ("processed_watcher.log (tmp)", "/tmp/processed_watcher.log"),
-    ]
-
-    for log_name, log_path in log_files:
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, "r") as f:
-                    lines = f.readlines()
-                    if lines:
-                        last_line = lines[-1].strip()
-                        logger.log(f"✅ {log_name} exists - Last: {last_line[:100]}...")
-                    else:
-                        logger.log(f"⚠️ {log_name} exists but is empty")
-            except Exception as e:
-                logger.log(f"⚠️ Could not read {log_name}: {e}")
-        else:
-            logger.log(f"ℹ️ {log_name} not found at {log_path}")
+    logger.log("✅ Services restart completed")
 
 
 def main():

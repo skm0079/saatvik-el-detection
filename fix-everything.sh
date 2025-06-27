@@ -1,3 +1,14 @@
+# Stop everything
+docker compose down -v
+
+# The REAL fix - set host directory to PostgreSQL user (UID 70)
+sudo rm -rf ./data/postgres/*
+sudo mkdir -p ./data/postgres
+sudo chown -R 70:70 ./data/postgres
+sudo chmod -R 755 ./data/postgres
+
+# Use STANDARD PostgreSQL (no root user)
+cat > docker-compose.yml << 'EOF'
 services:
   frontend-build:
     build:
@@ -58,3 +69,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+EOF
+
+# Start services
+make dev
