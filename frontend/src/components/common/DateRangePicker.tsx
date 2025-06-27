@@ -212,7 +212,7 @@ export function DateRangePicker({
                             >
                                 <div className="flex items-center justify-between">
                                     <span className={dateFrom ? 'text-slate-900' : 'text-slate-500'}>
-                                        {dateFrom ? formatDisplayDate(dateFrom) : 'Select start date...'}
+                                        {dateFrom ? formatDisplayDate(dateFrom) : 'Start Date'}
                                     </span>
                                     <svg className={`w-4 h-4 text-slate-400 transition-transform ${isFromOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -252,7 +252,7 @@ export function DateRangePicker({
                             >
                                 <div className="flex items-center justify-between">
                                     <span className={dateTo ? 'text-slate-900' : 'text-slate-500'}>
-                                        {dateTo ? formatDisplayDate(dateTo) : 'Select end date...'}
+                                        {dateTo ? formatDisplayDate(dateTo) : 'End Date'}
                                     </span>
                                     <svg className={`w-4 h-4 text-slate-400 transition-transform ${isToOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

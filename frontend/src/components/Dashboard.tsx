@@ -1,4 +1,4 @@
-// File: frontend/src/components/Dashboard.tsx
+// File: frontend/src/components/Dashboard.tsx - PART 1
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHealth, useDashboardAnalytics, useExport } from '@/hooks/useApi';
@@ -11,7 +11,22 @@ import { ROUTES, UI, MACHINE_FILTER, GRID_CONFIG } from '@/constants/config';
 export function Dashboard() {
   const navigate = useNavigate();
   const [selectedMachine, setSelectedMachine] = useState<string | null>(MACHINE_FILTER.CURRENT_MACHINE);
-  const [dateRange, _] = useState<{ from: string; to: string } | null>(null);
+
+  // Enhanced date range state with default to today
+  const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(() => {
+    const todayRange = TimeUtils.getTodayRangeUTC();
+    return {
+      from: todayRange.start,
+      to: todayRange.end
+    };
+  });
+
+  // Date filter presets
+  const [datePreset, setDatePreset] = useState<string>('today');
+  const [showCustomDateRange, setShowCustomDateRange] = useState(false);
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+
   const [lastRefreshTime, setLastRefreshTime] = useState<string>(TimeUtils.getCurrentIST());
 
   // API hooks
@@ -22,6 +37,104 @@ export function Dashboard() {
     selectedMachine || undefined
   );
   const { exportBulk, isExporting } = useExport();
+
+  // Date preset options
+  const datePresets = [
+    { value: 'today', label: '📅 Today', description: 'Today\'s data (IST)' },
+    { value: 'yesterday', label: '📆 Yesterday', description: 'Yesterday\'s data (IST)' },
+    { value: 'last7days', label: '📊 Last 7 Days', description: 'Past week data' },
+    { value: 'last30days', label: '📈 Last 30 Days', description: 'Past month data' },
+    { value: 'thisMonth', label: '🗓️ This Month', description: 'Current month data' },
+    { value: 'custom', label: '⚙️ Custom Range', description: 'Select specific dates' }
+  ];
+
+  // Handle date preset changes
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    setShowCustomDateRange(preset === 'custom');
+
+    if (preset !== 'custom') {
+      const range = getDateRangeForPreset(preset);
+      setDateRange(range);
+    }
+  };
+
+  // Get date range for preset
+  const getDateRangeForPreset = (preset: string) => {
+    const now = new Date();
+    const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+
+    switch (preset) {
+      case 'today': {
+        const todayRange = TimeUtils.getTodayRangeUTC();
+        return { from: todayRange.start, to: todayRange.end };
+      }
+      case 'yesterday': {
+        const yesterday = new Date(istNow);
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        const yesterdayEnd = new Date(yesterday);
+        yesterdayEnd.setHours(23, 59, 59, 999);
+
+        // Convert IST to UTC
+        const utcStart = new Date(yesterday.getTime() - (5.5 * 60 * 60 * 1000));
+        const utcEnd = new Date(yesterdayEnd.getTime() - (5.5 * 60 * 60 * 1000));
+
+        return { from: utcStart.toISOString(), to: utcEnd.toISOString() };
+      }
+      case 'last7days': {
+        const weekAgo = new Date(istNow);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        weekAgo.setHours(0, 0, 0, 0);
+
+        const todayEnd = new Date(istNow);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const utcStart = new Date(weekAgo.getTime() - (5.5 * 60 * 60 * 1000));
+        const utcEnd = new Date(todayEnd.getTime() - (5.5 * 60 * 60 * 1000));
+
+        return { from: utcStart.toISOString(), to: utcEnd.toISOString() };
+      }
+      case 'last30days': {
+        const monthAgo = new Date(istNow);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        monthAgo.setHours(0, 0, 0, 0);
+
+        const todayEnd = new Date(istNow);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const utcStart = new Date(monthAgo.getTime() - (5.5 * 60 * 60 * 1000));
+        const utcEnd = new Date(todayEnd.getTime() - (5.5 * 60 * 60 * 1000));
+
+        return { from: utcStart.toISOString(), to: utcEnd.toISOString() };
+      }
+      case 'thisMonth': {
+        const monthStart = new Date(istNow.getFullYear(), istNow.getMonth(), 1, 0, 0, 0, 0);
+        const todayEnd = new Date(istNow);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const utcStart = new Date(monthStart.getTime() - (5.5 * 60 * 60 * 1000));
+        const utcEnd = new Date(todayEnd.getTime() - (5.5 * 60 * 60 * 1000));
+
+        return { from: utcStart.toISOString(), to: utcEnd.toISOString() };
+      }
+      default:
+        return null;
+    }
+  };
+
+  // Handle custom date range application
+  const handleApplyCustomRange = () => {
+    if (customDateFrom && customDateTo) {
+      // Convert IST datetime-local inputs to UTC
+      const fromUTC = TimeUtils.localToUTC(customDateFrom);
+      const toUTC = TimeUtils.localToUTC(customDateTo);
+
+      if (fromUTC && toUTC) {
+        setDateRange({ from: fromUTC, to: toUTC });
+      }
+    }
+  };
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -69,7 +182,7 @@ export function Dashboard() {
 
   const systemStatus = getSystemStatus();
 
-  // Handle export
+  // Handle export with current date filters
   const handleExport = async () => {
     try {
       await exportBulk(
@@ -82,6 +195,20 @@ export function Dashboard() {
     }
   };
 
+  // Get current date range display text
+  const getCurrentDateRangeText = () => {
+    if (!dateRange) return 'All Time';
+
+    const fromIST = TimeUtils.toISTDate(dateRange.from);
+    const toIST = TimeUtils.toISTDate(dateRange.to);
+
+    if (fromIST === toIST) {
+      return `📅 ${fromIST}`;
+    }
+    return `📅 ${fromIST} to ${toIST}`;
+  };
+
+  // PART 2 - Return JSX (continues from Part 1)
   return (
     <div className="space-y-8">
       {/* Enhanced Header with System Status */}
@@ -178,6 +305,146 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* NEW: Enhanced Date & Time Filter Section */}
+      <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl shadow-md border border-indigo-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <h3 className="text-lg font-semibold text-slate-900">📅 Date & Time Filters</h3>
+            <span className="text-sm bg-indigo-100 text-indigo-600 px-2 py-1 rounded font-medium">
+              {getCurrentDateRangeText()}
+            </span>
+            <HelpTooltip
+              title="Date Filtering"
+              content="Filter dashboard data by date range. All times are handled in IST timezone. 'Today' resets at midnight IST. Export will include only data from the selected date range."
+              size="sm"
+            />
+          </div>
+          <div className="text-xs text-slate-500">
+            Timezone: IST (UTC+5:30) • Data: {analytics?.totals.images_processed || 0} images
+          </div>
+        </div>
+
+        {/* Date Preset Buttons */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {datePresets.map((preset) => (
+            <button
+              key={preset.value}
+              onClick={() => handleDatePresetChange(preset.value)}
+              className={`p-3 rounded-lg text-sm font-medium transition-all duration-200 border-2 ${datePreset === preset.value
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md'
+                : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50'
+                }`}
+              title={preset.description}
+            >
+              <div className="font-semibold">{preset.label}</div>
+              <div className="text-xs opacity-75 mt-1">{preset.description}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Custom Date Range Inputs */}
+        {showCustomDateRange && (
+          <div className="bg-white rounded-lg p-4 border border-indigo-200">
+            <div className="flex items-center space-x-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  📅 From Date & Time (IST)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                  max={new Date().toISOString().slice(0, 16)}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  📅 To Date & Time (IST)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                  max={new Date().toISOString().slice(0, 16)}
+                />
+              </div>
+              <div className="flex flex-col space-y-2">
+                <button
+                  onClick={handleApplyCustomRange}
+                  disabled={!customDateFrom || !customDateTo}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200 text-sm"
+                >
+                  ✅ Apply Range
+                </button>
+                <button
+                  onClick={() => {
+                    setCustomDateFrom('');
+                    setCustomDateTo('');
+                  }}
+                  className="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200 text-sm"
+                >
+                  🗑️ Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Quick time helpers */}
+            <div className="flex items-center space-x-2 mt-3 text-xs text-slate-500">
+              <span>💡 Quick fill:</span>
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  const istTime = TimeUtils.utcToLocalInput(now.toISOString());
+                  setCustomDateTo(istTime);
+                }}
+                className="text-indigo-600 hover:text-indigo-800 underline"
+              >
+                Set 'To' as now
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const istTime = TimeUtils.utcToLocalInput(today.toISOString());
+                  setCustomDateFrom(istTime);
+                }}
+                className="text-indigo-600 hover:text-indigo-800 underline"
+              >
+                Set 'From' as today start
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Current Filter Summary */}
+        <div className="flex items-center justify-between mt-4 p-3 bg-white rounded-lg border border-indigo-100">
+          <div className="flex items-center space-x-3">
+            <span className="text-sm font-medium text-slate-700">🔍 Current Filter:</span>
+            <span className="text-sm text-indigo-600 font-semibold">
+              {datePresets.find(p => p.value === datePreset)?.label || 'Custom Range'}
+            </span>
+            {dateRange && (
+              <span className="text-xs text-slate-500">
+                ({TimeUtils.toIST(dateRange.from)} to {TimeUtils.toIST(dateRange.to)})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-2 text-xs text-slate-500">
+            <span>📊 Showing:</span>
+            <span className="font-semibold text-indigo-600">
+              {analyticsLoading ? 'Loading...' : `${analytics?.totals.images_processed || 0} images`}
+            </span>
+            <span>•</span>
+            <span className="font-semibold text-red-600">
+              {analyticsLoading ? 'Loading...' : `${analytics?.totals.total_defects_found || 0} defects`}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Enhanced Stats Grid with Help Tooltips */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* System Health Card */}
@@ -215,23 +482,23 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Today's Images Card */}
+        {/* Images in Date Range Card */}
         <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
-                <p className="text-sm font-medium text-slate-600">📷 Today's Images</p>
+                <p className="text-sm font-medium text-slate-600">📷 Images in Range</p>
                 <HelpTooltip
-                  title="Today's Images"
-                  content="Number of solar panel images processed today (IST timezone). Each image is analyzed by AI to detect defects. This count resets at midnight IST."
+                  title="Images in Selected Range"
+                  content="Number of solar panel images processed in the selected date range. This count updates based on your date filter selection."
                   size="sm"
                 />
               </div>
               <p className="text-2xl font-bold text-blue-600 mt-2">
-                {analyticsLoading ? '...' : todayData?.images || 0}
+                {analyticsLoading ? '...' : analytics?.totals.images_processed || 0}
               </p>
               <div className="text-xs text-slate-500 space-y-1 mt-1">
-                <p>Processed today (IST)</p>
+                <p>In selected date range</p>
                 <p className="text-blue-600 font-medium">
                   {selectedMachine === MACHINE_FILTER.ALL_MACHINES ? '🌐 All Machines' : '🤖 Current Machine'}
                 </p>
@@ -358,13 +625,13 @@ export function Dashboard() {
                 </div>
                 <HelpTooltip
                   title="Total Images"
-                  content="Total number of solar panel images processed by the system since deployment. This includes all successful detections across all machines."
+                  content="Total number of solar panel images processed by the system in the selected date range. This includes all successful detections across all machines."
                   size="sm"
                 />
               </div>
               <div className="text-sm text-slate-600">Total Images</div>
               <div className="text-xs text-slate-500 mt-1">
-                All time processed
+                In selected period
               </div>
             </div>
           </div>
@@ -408,7 +675,7 @@ export function Dashboard() {
             <h3 className="text-lg font-semibold text-slate-900">📊 Overall Statistics</h3>
             <HelpTooltip
               title="Overall Statistics"
-              content="Comprehensive statistics across all processed images. These numbers represent the total performance and findings of the detection system."
+              content="Comprehensive statistics for the selected date range. These numbers represent the performance and findings of the detection system within your chosen time period."
               size="sm"
             />
           </div>
@@ -418,7 +685,7 @@ export function Dashboard() {
                 <p className="text-sm font-medium text-slate-600">Total Processed</p>
                 <HelpTooltip
                   title="Total Processed"
-                  content="Total number of solar panel images successfully analyzed by the AI system across all machines and time periods."
+                  content="Total number of solar panel images successfully analyzed by the AI system in the selected date range across selected machines."
                   size="sm"
                 />
               </div>
@@ -431,7 +698,7 @@ export function Dashboard() {
                 <p className="text-sm font-medium text-slate-600">Total Defects Found</p>
                 <HelpTooltip
                   title="Total Defects"
-                  content="Total number of defects detected across all analyzed images. Each defect represents a potential issue that may require inspection or maintenance."
+                  content="Total number of defects detected in the selected date range. Each defect represents a potential issue that may require inspection or maintenance."
                   size="sm"
                 />
               </div>
@@ -446,7 +713,7 @@ export function Dashboard() {
                 <p className="text-sm font-medium text-slate-600">Defect Types</p>
                 <HelpTooltip
                   title="Defect Classification"
-                  content="Different types of defects detected by the AI system. Each type represents a specific kind of issue that can occur on solar panels."
+                  content="Different types of defects detected by the AI system in the selected date range. Each type represents a specific kind of issue that can occur on solar panels."
                   size="sm"
                 />
               </div>
@@ -502,7 +769,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-lg font-semibold mb-2">📊 Export Data</h4>
-              <p className="text-purple-100 text-sm">Download analysis reports</p>
+              <p className="text-purple-100 text-sm">Download filtered analysis reports</p>
             </div>
             <div className="text-3xl opacity-75">{isExporting ? '⏳' : '↓'}</div>
           </div>
@@ -516,9 +783,11 @@ export function Dashboard() {
           <span>Auto-refreshing every 30 seconds</span>
           <span>•</span>
           <span>Last updated: {lastRefreshTime}</span>
+          <span>•</span>
+          <span>Filter: {datePresets.find(p => p.value === datePreset)?.label || 'Custom'}</span>
           <HelpTooltip
             title="Auto-refresh"
-            content="Dashboard data automatically updates every 30 seconds to show the latest information. The green dot indicates active monitoring."
+            content="Dashboard data automatically updates every 30 seconds to show the latest information. The green dot indicates active monitoring. Data is filtered by your selected date range."
             size="sm"
           />
         </div>

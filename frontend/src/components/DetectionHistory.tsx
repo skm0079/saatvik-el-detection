@@ -663,7 +663,7 @@ export function DetectionHistory() {
                       <span>Time:</span>
                     </span>
                     <span className="font-medium text-blue-600 font-mono text-xs">
-                      {TimeUtils.toISTTime(detection.created_at)}
+                      {TimeUtils.toIST(detection.created_at)}
                     </span>
                   </div>
 
@@ -776,7 +776,7 @@ export function DetectionHistory() {
                         {TimeUtils.toISTDate(detection.created_at)}
                       </div>
                       <div className="text-xs text-slate-500 font-mono">
-                        {TimeUtils.toISTTime(detection.created_at)}
+                        {TimeUtils.toIST(detection.created_at)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
