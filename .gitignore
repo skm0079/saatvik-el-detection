@@ -16,6 +16,7 @@ wheels/
 *.DS_Store
 /logs
 /backup
+/backup/*.json
 /source
 /processed
 /models
