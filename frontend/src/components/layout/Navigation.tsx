@@ -3,6 +3,8 @@
 import { NavLink } from 'react-router-dom';
 import { useHealth } from '@/hooks/useApi';
 import { ROUTES } from '@/constants/config';
+// Import your logo from assets folder
+import logo from '@/assets/logo.png';
 
 export function Navigation() {
   const { data: health } = useHealth();
@@ -13,8 +15,12 @@ export function Navigation() {
         <div className="flex justify-between items-center h-16">
           {/* Logo & Brand */}
           <div className="flex items-center space-x-3">
-            <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
-              <span className="text-xl font-bold text-white">🔍</span>
+            <div className="flex items-center justify-center w-10 h-10 bg-yellow-600 rounded-lg p-1">
+              <img
+                src={logo}
+                alt="Saatvik EL Logo"
+                className="w-full h-full object-contain filter "
+              />
             </div>
             <div className="flex flex-col">
               <span className="text-white font-bold text-lg">Saatvik EL</span>

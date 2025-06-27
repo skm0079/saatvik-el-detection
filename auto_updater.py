@@ -8,7 +8,7 @@ import json
 import os
 import subprocess
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -17,6 +17,39 @@ SCRIPT_DIR = Path(__file__).parent
 CONFIG_FILE = SCRIPT_DIR / "shared_config.json"
 BACKUP_DIR = SCRIPT_DIR / "config_backups"
 LOG_DIR = SCRIPT_DIR
+
+# HARDCODED SHIFT DEFINITIONS (copied from setup_config_json.py)
+MACHINES_SHIFT_CONFIG = {
+    "Test Machine": {
+        "base_path": "/mnt/shared",
+        "shifts": {
+            "Morning Shift": {
+                "start": 6,
+                "end": 18,
+                "minutes": 50,
+            },  # 6:50 AM to 6:50 PM
+            "Night Shift": {"start": 18, "end": 6, "minutes": 50},  # 6:50 PM to 6:50 AM
+        },
+    },
+    "Factory Line 2": {
+        "base_path": "/mnt/shared2",
+        "shifts": {
+            "Morning Shift": {
+                "start": 7,
+                "end": 19,
+                "minutes": 0,
+            },  # 7:00 AM to 7:00 PM
+            "Night Shift": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
+        },
+    },
+    "Factory Line 1": {
+        "base_path": "/mnt/shared3",
+        "shifts": {
+            "X": {"start": 7, "end": 19, "minutes": 0},  # 7:00 AM to 7:00 PM
+            "Y": {"start": 19, "end": 7, "minutes": 0},  # 7:00 PM to 7:00 AM
+        },
+    },
+}
 
 
 class Logger:
@@ -112,37 +145,64 @@ def backup_config(config: Dict) -> None:
         logger.log(f"⚠️ Failed to create backup: {e}")
 
 
-def get_current_shift_info(machine_config: Dict) -> Tuple[str, str]:
+def get_current_shift_for_machine(machine_name, current_hour, current_minute):
+    """Get current shift for a specific machine based on its shift times"""
+
+    if machine_name not in MACHINES_SHIFT_CONFIG:
+        return None
+
+    machine = MACHINES_SHIFT_CONFIG[machine_name]
+    shift_config = machine["shifts"]
+
+    # Convert current time to minutes since midnight for comparison
+    current_time_minutes = current_hour * 60 + current_minute
+
+    # Check each shift to see which one we're in
+    for shift_name, times in shift_config.items():
+        start_minutes = times["start"] * 60 + times["minutes"]
+        end_minutes = times["end"] * 60 + times["minutes"]
+
+        # Handle shift that crosses midnight (e.g., 19:00 to 07:00 next day)
+        if start_minutes > end_minutes:  # Night shift crossing midnight
+            if (
+                current_time_minutes >= start_minutes
+                or current_time_minutes < end_minutes
+            ):
+                return shift_name
+        else:  # Day shift within same day
+            if start_minutes <= current_time_minutes < end_minutes:
+                return shift_name
+
+    # If no shift found, return the first one (fallback)
+    return list(shift_config.keys())[0]
+
+
+def generate_expected_path(machine_name, date_str, shift_name):
+    """Generate expected smb_watch_path for a machine"""
+    if machine_name not in MACHINES_SHIFT_CONFIG:
+        return None
+
+    base_path = MACHINES_SHIFT_CONFIG[machine_name]["base_path"]
+    return f"{base_path}/{date_str}/{shift_name}"
+
+
+def get_current_shift_info(machine_name: str) -> Tuple[str, str]:
     """Get current shift name and expected path for a machine"""
     current_time = datetime.now()
     current_date = current_time.strftime("%Y-%m-%d")
 
-    shifts = machine_config.get("shifts", {})
+    # Get current shift based on hardcoded definitions
+    current_shift = get_current_shift_for_machine(
+        machine_name, current_time.hour, current_time.minute
+    )
 
-    for shift_name, shift_info in shifts.items():
-        start_time = datetime.strptime(
-            f"{current_date} {shift_info['start_time']}", "%Y-%m-%d %H:%M"
-        )
-        end_time = datetime.strptime(
-            f"{current_date} {shift_info['end_time']}", "%Y-%m-%d %H:%M"
-        )
+    if not current_shift:
+        return "Unknown", ""
 
-        # Handle shifts that cross midnight
-        if end_time <= start_time:
-            end_time += timedelta(days=1)
-            if current_time < start_time:
-                start_time -= timedelta(days=1)
+    # Generate expected path
+    expected_path = generate_expected_path(machine_name, current_date, current_shift)
 
-        if start_time <= current_time < end_time:
-            # Determine the shift date (date when shift started)
-            shift_date = start_time.strftime("%Y-%m-%d")
-            expected_path = (
-                f"{machine_config['base_watch_path']}/{shift_date}/{shift_name}"
-            )
-            return shift_name, expected_path
-
-    # Fallback if no shift matches
-    return "Unknown", f"{machine_config['base_watch_path']}/{current_date}/Unknown"
+    return current_shift, expected_path
 
 
 def check_path_updates_needed(config: Dict) -> List[Dict]:
@@ -164,22 +224,28 @@ def check_path_updates_needed(config: Dict) -> List[Dict]:
 
     # Show current shift info for all machines
     for machine_id, machine_config in machines.items():
-        shift_name, expected_path = get_current_shift_info(machine_config)
-        logger.log(
-            f"{machine_id}: {shift_name} ({machine_config['shifts'][shift_name]['start_time']}-{machine_config['shifts'][shift_name]['end_time']}) → {expected_path} [shift date: {expected_path.split('/')[-2]}]"
-        )
+        shift_name, expected_path = get_current_shift_info(machine_id)
+        if machine_id in MACHINES_SHIFT_CONFIG:
+            shift_config = MACHINES_SHIFT_CONFIG[machine_id]["shifts"][shift_name]
+            start_time = f"{shift_config['start']:02d}:{shift_config['minutes']:02d}"
+            end_time = f"{shift_config['end']:02d}:{shift_config['minutes']:02d}"
+            logger.log(
+                f"{machine_id}: {shift_name} ({start_time}-{end_time}) → {expected_path} [shift date: {expected_path.split('/')[-2]}]"
+            )
+        else:
+            logger.log(f"{machine_id}: No shift config found")
 
     logger.log("📊 PATH COMPARISON:")
 
     for machine_id, machine_config in machines.items():
         current_path = machine_config["smb_watch_path"]
-        shift_name, expected_path = get_current_shift_info(machine_config)
+        shift_name, expected_path = get_current_shift_info(machine_id)
 
         logger.log(f"  {machine_id}:")
         logger.log(f"    Current:  {current_path}")
         logger.log(f"    Expected: {expected_path}")
 
-        if current_path != expected_path:
+        if current_path != expected_path and expected_path:
             machines_to_update.append(
                 {
                     "machine_id": machine_id,

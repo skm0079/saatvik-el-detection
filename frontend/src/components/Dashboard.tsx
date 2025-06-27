@@ -7,6 +7,7 @@ import { MachineSelector } from '@/components/common/MachineSelector';
 import { HelpTooltip, HelpTooltips } from '@/components/common/HelpTooltip';
 import { TimeUtils } from '@/utils/timeUtils';
 import { ROUTES, UI, MACHINE_FILTER, GRID_CONFIG } from '@/constants/config';
+import logo from '@/assets/logo.png';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -215,7 +216,12 @@ export function Dashboard() {
       <div className="flex justify-between items-start">
         <div className="flex-1">
           <div className="flex items-center space-x-3 mb-2">
-            <h1 className="text-3xl font-bold text-slate-900">🏭 Saatvik EL Detection</h1>
+            <img
+              src={logo}
+              alt="Saatvik EL Logo"
+              className="w-12 h-12 object-contain filter brightness-0 invert"
+            />
+            <h1 className="text-3xl font-bold text-slate-900"> Saatvik EL Detection</h1>
             <div className={`w-3 h-3 rounded-full ${systemStatus.color} animate-pulse`}></div>
             <span className="text-sm font-medium text-slate-600">{systemStatus.text}</span>
             <HelpTooltip
