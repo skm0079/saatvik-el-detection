@@ -233,11 +233,12 @@ def kill_old_watchers():
     """Kill old watcher processes"""
     log_to_file(MAIN_LOG, "Stopping old watcher processes...")
 
-    # Multiple methods to ensure processes are killed
+    # FIXED: Target UV-run processes specifically
     kill_commands = [
+        "ps aux | grep 'uv run.*el_watcher' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
+        "ps aux | grep 'uv run.*processed_watcher' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
         "ps aux | grep 'el_watcher.py' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
         "ps aux | grep 'processed_watcher.py' | grep -v grep | awk '{print $2}' | xargs -r kill -9",
-        "killall python3 2>/dev/null || true",
     ]
 
     for cmd in kill_commands:
@@ -247,7 +248,7 @@ def kill_old_watchers():
             pass
         time.sleep(1)
 
-    log_to_file(MAIN_LOG, "✅ Old processes terminated")
+    log_to_file(MAIN_LOG, "✅ Old watcher processes terminated")
 
 
 def start_watchers():
@@ -261,13 +262,13 @@ def start_watchers():
         log_file = LOG_DIR / f"{machine.replace(' ', '_').lower()}_watcher.log"
 
         try:
-            # Use Popen for proper background process management
+            # Use UV to run in virtual environment
             env = os.environ.copy()
             env["MACHINE"] = machine
 
             with open(log_file, "w") as f:
                 process = subprocess.Popen(
-                    ["python3", "watchdog/el_watcher.py"],
+                    ["uv", "run", "python3", "watchdog/el_watcher.py"],
                     cwd=SCRIPT_DIR,
                     env=env,
                     stdout=f,
@@ -290,7 +291,7 @@ def start_watchers():
     try:
         with open(processed_log, "w") as f:
             process = subprocess.Popen(
-                ["python3", "watchdog/processed_watcher.py"],
+                ["uv", "run", "python3", "watchdog/processed_watcher.py"],
                 cwd=SCRIPT_DIR,
                 stdout=f,
                 stderr=subprocess.STDOUT,
@@ -310,39 +311,53 @@ def verify_watchers_running():
     """Verify that watchers are actually running"""
     log_to_file(MAIN_LOG, "Verifying watchers are running...")
 
-    machines = ["Test Machine", "Factory Line 1", "Factory Line 2"]
     running_count = 0
 
-    # Check el_watchers
-    for machine in machines:
-        try:
-            result = subprocess.run(
-                f"ps aux | grep 'MACHINE={machine}' | grep -v grep",
-                shell=True,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                log_to_file(MAIN_LOG, f"✅ {machine} watcher confirmed running")
-                running_count += 1
-            else:
-                log_to_file(MAIN_LOG, f"❌ {machine} watcher NOT running", "ERROR")
-        except Exception as e:
-            log_to_file(MAIN_LOG, f"❌ Failed to check {machine} watcher: {e}", "ERROR")
-
-    # Check processed watcher
+    # Count UV el_watcher processes
     try:
         result = subprocess.run(
-            "ps aux | grep 'processed_watcher.py' | grep -v grep",
+            "ps aux | grep 'uv run.*el_watcher' | grep -v grep | wc -l",
             shell=True,
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0 and result.stdout.strip():
+
+        el_watcher_count = (
+            int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+        )
+        log_to_file(MAIN_LOG, f"📊 Found {el_watcher_count} el_watcher processes")
+
+        if el_watcher_count >= 3:
+            log_to_file(MAIN_LOG, "✅ All 3 el_watchers confirmed running")
+            running_count += 3
+        else:
+            log_to_file(
+                MAIN_LOG, f"❌ Only {el_watcher_count}/3 el_watchers running", "ERROR"
+            )
+            running_count += el_watcher_count
+
+    except Exception as e:
+        log_to_file(MAIN_LOG, f"❌ Failed to check el_watchers: {e}", "ERROR")
+
+    # Check processed watcher
+    try:
+        result = subprocess.run(
+            "ps aux | grep 'uv run.*processed_watcher' | grep -v grep | wc -l",
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+
+        processed_count = (
+            int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+        )
+
+        if processed_count >= 1:
             log_to_file(MAIN_LOG, "✅ processed_watcher confirmed running")
             running_count += 1
         else:
             log_to_file(MAIN_LOG, "❌ processed_watcher NOT running", "ERROR")
+
     except Exception as e:
         log_to_file(MAIN_LOG, f"❌ Failed to check processed_watcher: {e}", "ERROR")
 
@@ -352,6 +367,19 @@ def verify_watchers_running():
 
     if running_count < 4:
         log_to_file(MAIN_LOG, "🚨 NOT ALL WATCHERS RUNNING - CHECK LOGS", "CRITICAL")
+
+        # Debug: Show what processes ARE running
+        try:
+            result = subprocess.run(
+                "ps aux | grep 'uv run.*watcher' | grep -v grep",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            log_to_file(MAIN_LOG, f"DEBUG: Watcher processes:\n{result.stdout}")
+        except:
+            pass
+
         return False
 
     return True
@@ -399,23 +427,29 @@ def main():
         # Step 3: Check if config updates are needed
         config_updated = update_config_paths()
 
-        if not config_updated:
-            log_to_file(MAIN_LOG, "✅ No updates needed - exiting")
-            return
+        # Step 4: Always check if watchers are running (regardless of config updates)
+        log_to_file(MAIN_LOG, "Checking if watchers are running...")
+        watchers_running = verify_watchers_running()
 
-        # Step 4: Restart services
-        if not restart_services():
-            log_to_file(MAIN_LOG, "❌ Service restart failed", "ERROR")
-            return
+        # Step 5: Restart services only if config was updated
+        if config_updated:
+            if not restart_services():
+                log_to_file(MAIN_LOG, "❌ Service restart failed", "ERROR")
+                return
 
-        # Step 5: Kill old watchers
-        kill_old_watchers()
+        # Step 6: Start watchers if not running (always check this)
+        if not watchers_running:
+            log_to_file(MAIN_LOG, "Watchers not running - starting them...")
+            kill_old_watchers()
+            started_count = start_watchers()
 
-        # Step 6: Start new watchers
-        start_watchers()
+            # Verify they started
+            time.sleep(15)
+            if not verify_watchers_running():
+                log_to_file(MAIN_LOG, "❌ Watcher verification failed", "ERROR")
+        else:
+            log_to_file(MAIN_LOG, "✅ All watchers already running")
 
-        # Step 7: Verify everything is running
-        time.sleep(10)
         log_to_file(MAIN_LOG, "✅ AUTO-UPDATER COMPLETED SUCCESSFULLY")
 
     except Exception as e:

@@ -17,7 +17,7 @@
           "machine_id": "IT Office Machine",
           "machine_name": "IT Office Machine",
           "smb_source_path": "/mnt/shared",
-          "smb_watch_path": "/mnt/shared/2025-06-20/Morning Shift",
+          "smb_watch_path": "/mnt/shared/2025-06-28/Morning Shift",
           "smb_processed_path": "/mnt/shared/processed",
           "client_ip": "10.10.2.1",
           "client_os": "windows"
