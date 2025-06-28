@@ -77,7 +77,7 @@
       "database_name": "saatvik_el_db_prod",
       "api_base": "http://localhost:8002",
       "api_endpoint": "http://localhost:8002/api/v1/detect",
-      "confidence_threshold": 0.5,
+      "confidence_threshold": 0.2,
       "excluded_folders": [
         "NG",
         "OK",

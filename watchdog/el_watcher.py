@@ -242,7 +242,7 @@ class ELWatchdogService:
                     machine_from_env = os.getenv("MACHINE", "Unknown")
                     data = {
                         "el_folder_path": el_folder_path,
-                        "confidence": 0.5,
+                        "confidence": 0.2,  # TODO: Default confidence threshold
                         "machine_name": machine_from_env,  # Use environment variable
                     }
 

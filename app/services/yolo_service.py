@@ -237,7 +237,7 @@ class YOLOService:
             return image
 
     async def detect_defects_async(
-        self, image_path: Path, confidence: float = 0.5
+        self, image_path: Path, confidence: float = 0.2
     ) -> Dict[str, Any]:
         """Run YOLO detection asynchronously with comprehensive grid mapping"""
         loop = asyncio.get_event_loop()
