@@ -13,55 +13,65 @@ export class ImageUtils {
   }
 
   /**
-   * Get original image URL from annotated image path
+   * Get original image URL from detection object
    * 
    * FILE PATTERN ANALYSIS:
-   * - Source files (in ./source/): "detection_id_originalfilename.jpg"
-   *   Example: "04978bc4-3fba-4ad6-92d8-0b7216e14224_SGE0224THC2833064.jpg"
+   * - Source files (in ./source/): "detection_id_machine_id_originalfilename.jpg"
+   *   Example: "cd5a46e7-e0ab-4551-9f4d-5744a641d6ce_Factory_Line_1_SGE0225THC1774929.jpg"
    * 
    * - Annotated files (in ./processed/timestamp/annotated/): "detection_id_originalfilename_annotated.jpg"
-   *   Example: "04978bc4-3fba-4ad6-92d8-0b7216e14224_SGE0224THC2833064_annotated.jpg"
+   *   Example: "cd5a46e7-e0ab-4551-9f4d-5744a641d6ce_SGE0225THC1774929_annotated.jpg"
    * 
    * TRANSFORMATION LOGIC:
-   * Input:  "20250624_082116/annotated/detection_id_filename_annotated.jpg"
-   * Output: "/source/detection_id_filename.jpg"
+   * Input:  "20250628_072712/annotated/detection_id_filename_annotated.jpg"
+   * Output: "/source/detection_id_machine_id_filename.jpg"
+   * 
+   * NOTE: Machine ID is inserted between detection_id and original filename
+   * Machine ID spaces are converted to underscores for filename compatibility
+   * 
+   * @param {Object} detection - The detection object containing annotated_image_path, detection_id, machine_id, etc.
+   * @param {string} [machineId] - Optional machine ID override
+   * @returns {string} - The original image URL path
    */
-  static getOriginalUrl(annotatedPath: string): string {
-    // STEP 1: Null/undefined safety check
-    if (!annotatedPath) {
-      console.warn('getOriginalUrl: annotatedPath is null or undefined');
-      return '/source/placeholder.jpg'; // Fallback for broken data
+  static getOriginalUrl(detection: any, machineId = null) {
+    // Safety check
+    if (!detection?.annotated_image_path) {
+      console.warn('getOriginalUrl: No annotated_image_path found');
+      return '/source/placeholder.jpg';
     }
 
-    // STEP 2: Extract filename from full path
-    // Input: "20250624_082116/annotated/detection_id_filename_annotated.jpg"
-    // Split by '/' and get last part: "detection_id_filename_annotated.jpg"
-    const filename = annotatedPath.split('/').pop();
-
-    // STEP 3: Validate filename extraction
+    // Extract filename from path
+    const filename = detection.annotated_image_path.split('/').pop();
     if (!filename) {
-      console.warn('getOriginalUrl: Could not extract filename from path:', annotatedPath);
-      return '/source/placeholder.jpg'; // Fallback for malformed paths
+      console.warn('getOriginalUrl: Could not extract filename');
+      return '/source/placeholder.jpg';
     }
 
-    // STEP 4: Transform annotated filename to source filename
-    // Remove "_annotated" suffix to match source file naming
-    // "detection_id_filename_annotated.jpg" → "detection_id_filename.jpg"
-    // "detection_id_filename_annotated.png" → "detection_id_filename.png"
-    const originalFilename = filename
-      .replace('_annotated.jpg', '.jpg')  // Handle JPG files
-      .replace('_annotated.png', '.png'); // Handle PNG files
+    // Remove _annotated suffix
+    let originalFilename = filename
+      .replace('_annotated.jpg', '.jpg')
+      .replace('_annotated.png', '.png')
+      .replace('_annotated.jpeg', '.jpeg');
 
-    // STEP 5: Debug logging (remove in production)
-    console.log('Input annotated path:', annotatedPath);
-    console.log('Extracted filename:', filename);
-    console.log('Generated original filename:', originalFilename);
+    // Get machine ID - use override or from detection object
+    const finalMachineId = machineId || detection.machine_id;
 
-    // STEP 6: Construct final static URL
-    // Static route "/source" maps to ./source/ folder in project root
+    // Convert spaces to underscores for filename compatibility
+    const cleanMachineId = finalMachineId ? finalMachineId.replace(/\s+/g, '_') : null;
+
+    // If we have machine ID and it's not already in filename, insert it
+    if (cleanMachineId && !originalFilename.includes(cleanMachineId)) {
+      const parts = originalFilename.split('_');
+      if (parts.length >= 2) {
+        // Insert machine ID after detection_id (first part)
+        originalFilename = [parts[0], cleanMachineId, ...parts.slice(1)].join('_');
+        console.log('Inserted machine ID into filename:', originalFilename);
+      }
+    }
+
     const finalUrl = `/source/${originalFilename}`;
-    console.log('Final original URL:', finalUrl);
 
+    console.log('Generated original URL:', finalUrl);
     return finalUrl;
   }
 

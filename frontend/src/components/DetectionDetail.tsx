@@ -134,7 +134,7 @@ export function DetectionDetail() {
 
   // Safe URL construction
   const originalUrl = detection.annotated_image_path
-    ? ImageUtils.getOriginalUrl(detection.annotated_image_path)
+    ? ImageUtils.getOriginalUrl(detection)
     : '/processed/placeholder.jpg';
 
   const annotatedUrl = detection.annotated_image_path
@@ -367,7 +367,11 @@ export function DetectionDetail() {
                 <div className="bg-green-50 rounded-lg p-4">
                   <p className="text-sm font-medium text-green-600 mb-1">🎯 Max Defects/Cell</p>
                   <p className="font-semibold text-slate-900">
-                    {gridData ? Math.max(...Object.values(gridData).map(d => d.defects)) : 0}
+                    {(() => {
+                      if (!gridData || Object.keys(gridData).length === 0) return 0;
+                      const maxDefects = Math.max(...Object.values(gridData).map(d => d.defects));
+                      return isFinite(maxDefects) ? maxDefects : 0;
+                    })()}
                   </p>
                   <p className="text-xs text-slate-500">Highest defect count</p>
                 </div>
